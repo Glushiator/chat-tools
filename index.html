@@ -3,81 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Location Matcher</title>
+    <title>AI Geo-Timestamp</title>
     <style>
+        :root {
+            --primary-color: #007bff;
+            --light-gray: #f0f0f0;
+            --dark-gray: #333;
+        }
         body {
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 20px;
-            gap: 15px;
+            padding: 15px;
+            gap: 20px;
+            background-color: #f4f4f9;
         }
         .container {
             border: 1px solid #ccc;
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 20px;
-            width: 90%;
-            max-width: 400px;
+            width: 100%;
+            max-width: 500px;
             text-align: center;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        h2 { margin-top: 0; }
+        h2 { 
+            margin-top: 0;
+            color: var(--dark-gray);
+        }
+        #mainButton {
+            width: 100%;
+            padding: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--primary-color);
+            color: white;
+            transition: background-color 0.2s;
+        }
+        #mainButton:active {
+            background-color: #0056b3;
+        }
+        #status {
+            font-size: 1em;
+            color: #555;
+            min-height: 22px;
+            margin-top: 15px;
+        }
         input[type="text"] {
-            padding: 8px;
-            margin-right: 10px;
+            box-sizing: border-box;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
         }
-        button {
-            padding: 8px 15px;
-            font-size: 14px;
+        #saveButton {
+            width: 100%;
+            padding: 10px;
+            font-size: 1em;
             cursor: pointer;
             border-radius: 4px;
-            border: 1px solid #007bff;
-            background-color: #007bff;
+            border: none;
+            background-color: #28a745;
             color: white;
-        }
-        #status {
-            font-weight: bold;
-            font-size: 1.1em;
-            color: #333;
-            min-height: 25px;
         }
         #savedList {
             list-style-type: none;
             padding: 0;
             text-align: left;
             font-family: monospace;
+            font-size: 0.9em;
         }
         #savedList li {
-            background-color: #f0f0f0;
+            background-color: var(--light-gray);
             margin-bottom: 5px;
-            padding: 8px;
+            padding: 10px;
             border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>Current Status</h2>
-        <div id="status">Initializing...</div>
+        <button id="mainButton">Copy Timestamp & Location</button>
+        <div id="status">Click the button to copy info</div>
     </div>
 
     <div class="container">
-        <h2>Save New Location</h2>
+        <h2>Manage Saved Locations</h2>
         <input type="text" id="locationLabel" placeholder="Enter label (e.g., Office)">
         <button id="saveButton">Save Current Location</button>
-    </div>
-
-    <div class="container">
-        <h2>Saved Locations</h2>
+        <h3 style="margin-top: 20px; margin-bottom: 10px; text-align: left;">Saved:</h3>
         <ul id="savedList"></ul>
     </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const mainButton = document.getElementById('mainButton');
     const statusDiv = document.getElementById('status');
+    // ... (other variable declarations are the same)
     const saveButton = document.getElementById('saveButton');
     const locationLabelInput = document.getElementById('locationLabel');
     const savedList = document.getElementById('savedList');
@@ -86,37 +118,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Functions ---
 
-    /**
-     * Calculates distance between two coordinates in meters using the Haversine formula.
-     */
     function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3; // Earth's radius in meters
+        const R = 6371e3;
         const phi1 = lat1 * Math.PI / 180;
         const phi2 = lat2 * Math.PI / 180;
         const deltaPhi = (lat2 - lat1) * Math.PI / 180;
         const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-        const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-                  Math.cos(phi1) * Math.cos(phi2) *
-                  Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+        const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return R * c; // Distance in meters
+        return R * c;
     }
 
     /**
-     * Loads locations from localStorage.
+     * NEW: Fetches a street address from GPS coordinates using OpenStreetMap.
+     * This is an async function because it makes a network request.
      */
+    async function getAddressFromCoords(lat, lon) {
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+            const data = await response.json();
+            // The 'display_name' field usually has the full, nicely formatted address.
+            return data.display_name || "Address not found";
+        } catch (error) {
+            console.error("Reverse geocoding error:", error);
+            return "Address lookup failed";
+        }
+    }
+
     function getSavedLocations() {
         return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
     }
-
-    /**
-     * Displays all saved locations in the list.
-     */
+    
     function displaySavedLocations() {
+        // This function remains the same as before
         const locations = getSavedLocations();
-        savedList.innerHTML = ''; // Clear current list
+        savedList.innerHTML = '';
         if (locations.length === 0) {
             savedList.innerHTML = '<li>No locations saved yet.</li>';
             return;
@@ -128,76 +164,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * On page load, get current location and check against saved locations.
-     */
-    function checkCurrentLocation() {
-        statusDiv.textContent = 'Getting your current location...';
+    // --- Main Action ---
+
+    mainButton.addEventListener('click', () => {
+        statusDiv.textContent = 'Getting location...';
         if (!navigator.geolocation) {
-            statusDiv.textContent = "Geolocation is not supported by your browser.";
+            statusDiv.textContent = "Geolocation is not supported.";
             return;
         }
-        navigator.geolocation.getCurrentPosition(position => {
-            const currentCoords = {
-                lat: position.coords.latitude,
-                lon: position.coords.longitude
-            };
+        
+        navigator.geolocation.getCurrentPosition(async (position) => { // Made this async
             const savedLocations = getSavedLocations();
+            const { latitude, longitude } = position.coords;
+            let locationString;
             let matchFound = false;
 
+            // Check against saved locations first
             for (const loc of savedLocations) {
-                const distance = calculateDistance(currentCoords.lat, currentCoords.lon, loc.coords.lat, loc.coords.lon);
-                if (distance <= 100) { // Check if within 100 meters
-                    statusDiv.textContent = `You are at: ${loc.label}`;
+                const distance = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon);
+                if (distance <= 100) {
+                    locationString = `at ${loc.label}`;
                     matchFound = true;
                     break;
                 }
             }
 
+            // If no saved location was found, get the street address
             if (!matchFound) {
-                statusDiv.textContent = 'You are not at any saved location.';
+                statusDiv.textContent = 'No saved match. Looking up address...';
+                const address = await getAddressFromCoords(latitude, longitude);
+                locationString = `at ${address}`;
             }
+            
+            const timestamp = new Date().toLocaleString('en-US', {
+                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                hour: 'numeric', minute: '2-digit', hour12: true
+            });
+
+            const finalString = `[${timestamp} ${locationString}]`;
+
+            navigator.clipboard.writeText(finalString).then(() => {
+                statusDiv.textContent = `Copied: ${finalString}`;
+            }).catch(err => {
+                statusDiv.textContent = 'Error: Could not copy text.';
+                console.error('Clipboard error:', err);
+            });
 
         }, () => {
-            statusDiv.textContent = 'Unable to retrieve your location.';
+            statusDiv.textContent = 'Error: Could not get location.';
         });
-    }
+    });
 
-
-    // --- Event Listeners ---
-
+    // ... (Location Management code remains the same)
     saveButton.addEventListener('click', () => {
         const label = locationLabelInput.value.trim();
         if (!label) {
-            alert('Please enter a label for the location.');
+            alert('Please enter a label.');
             return;
         }
 
         navigator.geolocation.getCurrentPosition(position => {
             const newLocation = {
                 label: label,
-                coords: {
-                    lat: position.coords.latitude,
-                    lon: position.coords.longitude
-                }
+                coords: { lat: position.coords.latitude, lon: position.coords.longitude }
             };
-
             const locations = getSavedLocations();
             locations.push(newLocation);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
             
-            alert(`Location "${label}" saved!`);
-            locationLabelInput.value = ''; // Clear input field
-            displaySavedLocations(); // Refresh the list
+            locationLabelInput.value = '';
+            displaySavedLocations();
+            statusDiv.textContent = `Location "${label}" saved.`;
         }, () => {
-            alert('Could not get your location to save it.');
+            statusDiv.textContent = 'Error: Could not get location to save it.';
         });
     });
-
-
-    // --- Initial Load ---
+    
     displaySavedLocations();
-    checkCurrentLocation();
 });
 </script>
 
