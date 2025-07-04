@@ -225,13 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
             statusDiv.textContent = "Geolocation is not supported.";
             return;
         }
-        
+    
         navigator.geolocation.getCurrentPosition(async (position) => {
             const savedLocations = getSavedLocations();
             const { latitude, longitude } = position.coords;
             let locationString;
             let matchFound = false;
-
+    
             for (const loc of savedLocations) {
                 const distance = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon);
                 if (distance <= 100) {
@@ -240,27 +240,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 }
             }
-
+    
             if (!matchFound) {
                 statusDiv.textContent = 'No saved match. Looking up address...';
                 const address = await getAddressFromCoords(latitude, longitude);
                 locationString = `at ${address}`;
             }
-            
+    
             const timestamp = new Date().toLocaleString('en-US', {
                 weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
                 hour: 'numeric', minute: '2-digit', hour12: true
             });
-
+    
             const finalString = `[${timestamp} ${locationString}]`;
-
-            navigator.clipboard.writeText(finalString).then(() => {
-                statusDiv.textContent = `Copied: ${finalString}`;
-            }).catch(err => {
-                statusDiv.textContent = 'Error: Could not copy text.';
-                console.error('Clipboard error:', err);
-            });
-
+    
+            // Prompt user to tap/click again to copy (ensures gesture)
+            statusDiv.innerHTML = `Ready: <code>${finalString}</code><br><button id="copyNowBtn">Copy to Clipboard</button>`;
+            document.getElementById('copyNowBtn').onclick = () => {
+                navigator.clipboard.writeText(finalString).then(() => {
+                    statusDiv.textContent = 'Copied!';
+                }).catch(err => {
+                    statusDiv.textContent = 'Error: Could not copy text.';
+                    console.error('Clipboard error:', err);
+                });
+            };
+    
         }, () => {
             statusDiv.textContent = 'Error: Could not get location.';
         });
