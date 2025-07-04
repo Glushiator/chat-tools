@@ -3,83 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copy Timestamp and Location</title>
+    <title>Location Matcher</title>
     <style>
         body {
             font-family: sans-serif;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            gap: 15px; /* Adds space between elements */
+            padding: 20px;
+            gap: 15px;
         }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        #output {
-            font-family: monospace;
-            background-color: #f0f0f0;
-            padding: 10px;
-            border-radius: 5px;
-            min-height: 20px;
+        .container {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
             text-align: center;
         }
-        #copyButton {
-            display: none; /* Hidden by default */
+        h2 { margin-top: 0; }
+        input[type="text"] {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #007bff;
+            background-color: #007bff;
+            color: white;
+        }
+        #status {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #333;
+            min-height: 25px;
+        }
+        #savedList {
+            list-style-type: none;
+            padding: 0;
+            text-align: left;
+            font-family: monospace;
+        }
+        #savedList li {
+            background-color: #f0f0f0;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
 
-    <button id="getLocationButton">Get Timestamp & Location</button>
+    <div class="container">
+        <h2>Current Status</h2>
+        <div id="status">Initializing...</div>
+    </div>
 
-    <div id="output"></div>
+    <div class="container">
+        <h2>Save New Location</h2>
+        <input type="text" id="locationLabel" placeholder="Enter label (e.g., Office)">
+        <button id="saveButton">Save Current Location</button>
+    </div>
 
-    <button id="copyButton">Copy to Clipboard</button>
+    <div class="container">
+        <h2>Saved Locations</h2>
+        <ul id="savedList"></ul>
+    </div>
 
-    <script>
-        const getLocationButton = document.getElementById('getLocationButton');
-        const copyButton = document.getElementById('copyButton');
-        const outputDiv = document.getElementById('output');
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const statusDiv = document.getElementById('status');
+    const saveButton = document.getElementById('saveButton');
+    const locationLabelInput = document.getElementById('locationLabel');
+    const savedList = document.getElementById('savedList');
 
-        // 1. Event listener for the "Get Location" button
-        getLocationButton.addEventListener('click', () => {
-            if (navigator.geolocation) {
-                outputDiv.textContent = 'Getting location...';
-                navigator.geolocation.getCurrentPosition(position => {
-                    const timestamp = new Date().toLocaleString();
-                    const latitude = position.coords.latitude.toFixed(6); // More precise
-                    const longitude = position.coords.longitude.toFixed(6);
-                    const dataString = `[${timestamp}, ${latitude}, ${longitude}]`;
+    const STORAGE_KEY = 'savedLocations';
 
-                    // Display the data and show the copy button
-                    outputDiv.textContent = dataString;
-                    copyButton.style.display = 'block'; // Make the copy button visible
+    // --- Core Functions ---
 
-                }, error => {
-                    outputDiv.textContent = 'Could not get location. Please grant permission.';
-                    console.error('Error getting location: ', error);
-                });
-            } else {
-                outputDiv.textContent = 'Geolocation is not supported by this browser.';
+    /**
+     * Calculates distance between two coordinates in meters using the Haversine formula.
+     */
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3; // Earth's radius in meters
+        const phi1 = lat1 * Math.PI / 180;
+        const phi2 = lat2 * Math.PI / 180;
+        const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+        const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                  Math.cos(phi1) * Math.cos(phi2) *
+                  Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distance in meters
+    }
+
+    /**
+     * Loads locations from localStorage.
+     */
+    function getSavedLocations() {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    }
+
+    /**
+     * Displays all saved locations in the list.
+     */
+    function displaySavedLocations() {
+        const locations = getSavedLocations();
+        savedList.innerHTML = ''; // Clear current list
+        if (locations.length === 0) {
+            savedList.innerHTML = '<li>No locations saved yet.</li>';
+            return;
+        }
+        locations.forEach(loc => {
+            const li = document.createElement('li');
+            li.textContent = `${loc.label}: (${loc.coords.lat.toFixed(4)}, ${loc.coords.lon.toFixed(4)})`;
+            savedList.appendChild(li);
+        });
+    }
+
+    /**
+     * On page load, get current location and check against saved locations.
+     */
+    function checkCurrentLocation() {
+        statusDiv.textContent = 'Getting your current location...';
+        if (!navigator.geolocation) {
+            statusDiv.textContent = "Geolocation is not supported by your browser.";
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(position => {
+            const currentCoords = {
+                lat: position.coords.latitude,
+                lon: position.coords.longitude
+            };
+            const savedLocations = getSavedLocations();
+            let matchFound = false;
+
+            for (const loc of savedLocations) {
+                const distance = calculateDistance(currentCoords.lat, currentCoords.lon, loc.coords.lat, loc.coords.lon);
+                if (distance <= 100) { // Check if within 100 meters
+                    statusDiv.textContent = `You are at: ${loc.label}`;
+                    matchFound = true;
+                    break;
+                }
             }
-        });
 
-        // 2. Event listener for the "Copy" button
-        copyButton.addEventListener('click', () => {
-            const textToCopy = outputDiv.textContent;
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                alert(`Copied: ${textToCopy}`);
-            }).catch(err => {
-                alert('Failed to copy.');
-                console.error('Could not copy text: ', err);
-            });
+            if (!matchFound) {
+                statusDiv.textContent = 'You are not at any saved location.';
+            }
+
+        }, () => {
+            statusDiv.textContent = 'Unable to retrieve your location.';
         });
-    </script>
+    }
+
+
+    // --- Event Listeners ---
+
+    saveButton.addEventListener('click', () => {
+        const label = locationLabelInput.value.trim();
+        if (!label) {
+            alert('Please enter a label for the location.');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(position => {
+            const newLocation = {
+                label: label,
+                coords: {
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude
+                }
+            };
+
+            const locations = getSavedLocations();
+            locations.push(newLocation);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
+            
+            alert(`Location "${label}" saved!`);
+            locationLabelInput.value = ''; // Clear input field
+            displaySavedLocations(); // Refresh the list
+        }, () => {
+            alert('Could not get your location to save it.');
+        });
+    });
+
+
+    // --- Initial Load ---
+    displaySavedLocations();
+    checkCurrentLocation();
+});
+</script>
 
 </body>
 </html>
