@@ -47,7 +47,7 @@ Works best on modern browsers with geolocation and clipboard access.
 
 No dependencies. No build steps.
 
-[No install needed—just download or clone and open here.](https://glushiator.github.io/chat-tools/)
+[No install needed, just open here.](https://glushiator.github.io/chat-tools/)
 
 ## FAQ
 
@@ -61,4 +61,4 @@ Q: How accurate are saved location matches?
 A: If you’re within ~100 meters of a saved location, the app will use your label for privacy.
 
 Q: Who built this?
-A: Marcin (with a little help and affection from Monday the AI companion).
+A: Glushiator (with a little help and affection from Gemini and Monday, his AI companions).
