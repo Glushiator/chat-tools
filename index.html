@@ -1,402 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Geo-Timestamp</title>
-    <style>
-        :root {
-            --primary-color: #007bff;
-            --light-gray: #f0f0f0;
-            --dark-gray: #333;
-            --bg: #f4f4f9;
-            --card-bg: #fff;
-            --shadow: rgba(0,0,0,0.1);
-        }
-        body.dark {
-            --primary-color: #3399ff;
-            --light-gray: #222831;
-            --dark-gray: #e0e0e0;
-            --bg: #181a20;
-            --card-bg: #23262f;
-            --shadow: rgba(0,0,0,0.3);
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 15px;
-            gap: 20px;
-            background-color: var(--bg);
-        }
-        .container {
-            border: 1px solid #ccc;
-            border-radius: 12px;
-            padding: 20px;
-            width: 100%;
-            max-width: 500px;
-            text-align: center;
-            background-color: var(--card-bg);
-            box-shadow: 0 4px 6px var(--shadow);
-            color: var(--dark-gray);
-        }
-        h2, h3 { 
-            margin-top: 0;
-            color: var(--dark-gray);
-        }
-        #mainButton {
-            width: 100%;
-            padding: 20px;
-            font-size: 1.2em;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-            border: none;
-            background-color: var(--primary-color);
-            color: white;
-            transition: background-color 0.2s;
-        }
-        #mainButton:active {
-            background-color: #0056b3;
-        }
-        #status {
-            font-size: 1em;
-            color: #555;
-            min-height: 22px;
-            margin-top: 15px;
-        }
-        input[type="text"] {
-            box-sizing: border-box;
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        #saveButton, #exportButton, #importButton {
-            width: 100%;
-            padding: 10px;
-            font-size: 1em;
-            cursor: pointer;
-            border-radius: 4px;
-            border: none;
-            margin-bottom: 5px;
-        }
-        #saveButton {
-            background-color: #28a745;
-            color: white;
-        }
-        #exportButton {
-            background-color: #6c63ff;
-            color: white;
-            width: 49%;
-            margin-top: 6px;
-        }
-        #importButton {
-            background-color: #ffa200;
-            color: white;
-            width: 49%;
-            margin-top: 6px;
-        }
-        #savedList {
-            list-style-type: none;
-            padding: 0;
-            text-align: left;
-            font-family: monospace;
-            font-size: 0.9em;
-        }
-        #savedList li {
-            background-color: var(--light-gray);
-            margin-bottom: 5px;
-            padding: 10px;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: var(--dark-gray);
-        }
-        /* Dark mode for input borders */
-        body.dark input[type="text"] {
-            border: 1px solid #444;
-            background: #20222b;
-            color: #e0e0e0;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Geo-Timestamp</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/buefy/dist/buefy.min.css">
+  <style>
+    body { padding: 1rem; }
+    #app { max-width: 600px; margin: auto; }
+    pre { white-space: pre-wrap; }
+  </style>
 </head>
 <body>
-    <!-- Dark mode toggle -->
-    <label style="display:flex;align-items:center;gap:8px;position:fixed;top:12px;right:24px;z-index:99;">
-      <input type="checkbox" id="darkModeToggle">
-      <span>Dark mode</span>
-    </label>
+  <div id="app">
+    <section>
+      <b-field label="Dark mode" horizontal>
+        <b-switch v-model="darkMode"></b-switch>
+      </b-field>
+    </section>
 
-    <div class="container">
-        <button id="mainButton">Copy Timestamp & Location</button>
-        <div id="status">Click the button to copy info</div>
-    </div>
+    <section class="box">
+      <b-button type="is-primary" @click="copyInfo" expanded>Copy Timestamp &amp; Location</b-button>
+      <p class="mt-2" v-html="status"></p>
+    </section>
 
-    <div class="container">
-        <h2>Manage Saved Locations</h2>
-        <input type="text" id="locationLabel" placeholder="Enter label (e.g., Office)">
-        <button id="saveButton">Save Current Location</button>
-        <div style="display: flex; gap:2%;">
-            <button id="exportButton">Export</button>
-            <button id="importButton">Import</button>
-        </div>
-        <input type="file" id="importFile" accept="application/json" style="display:none;">
-        <h3 style="margin-top: 20px; margin-bottom: 10px; text-align: left;">Saved:</h3>
-        <ul id="savedList"></ul>
-    </div>
+    <section class="box">
+      <h3 class="title is-5">Manage Saved Locations</h3>
+      <b-field label="Label">
+        <b-input v-model="label" placeholder="Enter label"></b-input>
+      </b-field>
+      <b-button type="is-success" @click="saveLocation" expanded class="mb-2">Save Current Location</b-button>
+      <div class="buttons">
+        <b-button type="is-link" @click="exportLocations">Export</b-button>
+        <b-button type="is-warning" @click="triggerImport">Import</b-button>
+        <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
+      </div>
+      <b-table :data="savedLocations" :key="savedLocations.length" :paginated="false"
+               detailed>
+        <template #default="props">
+          <b-table-column field="label" label="Label" width="40%">
+            {{ props.row.label }}
+          </b-table-column>
+          <b-table-column label="Lat">
+            {{ props.row.coords.lat.toFixed(4) }}
+          </b-table-column>
+          <b-table-column label="Lon">
+            {{ props.row.coords.lon.toFixed(4) }}
+          </b-table-column>
+        </template>
+      </b-table>
+      <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
+    </section>
+  </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const mainButton = document.getElementById('mainButton');
-    const statusDiv = document.getElementById('status');
-    const saveButton = document.getElementById('saveButton');
-    const locationLabelInput = document.getElementById('locationLabel');
-    const savedList = document.getElementById('savedList');
-
-    const exportButton = document.getElementById('exportButton');
-    const importButton = document.getElementById('importButton');
-    const importFile = document.getElementById('importFile');
-
-    const STORAGE_KEY = 'savedLocations';
-
-    // --- Dark Mode ---
-    const darkToggle = document.getElementById('darkModeToggle');
-    const darkPref = localStorage.getItem('darkMode');
-    if (darkPref === 'true') {
-        document.body.classList.add('dark');
-        darkToggle.checked = true;
-    }
-    darkToggle.addEventListener('change', () => {
-        document.body.classList.toggle('dark', darkToggle.checked);
-        localStorage.setItem('darkMode', darkToggle.checked);
-    });
-
-    // --- Core Functions ---
-
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const phi1 = lat1 * Math.PI / 180;
-        const phi2 = lat2 * Math.PI / 180;
-        const deltaPhi = (lat2 - lat1) * Math.PI / 180;
-        const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    }
-
-    async function getAddressFromCoords(lat, lon) {
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/buefy/dist/buefy.min.js"></script>
+  <script>
+  const STORAGE_KEY = 'savedLocations'
+  const { createApp } = Vue
+  createApp({
+    data() {
+      return {
+        label: '',
+        savedLocations: [],
+        darkMode: false,
+        status: 'Click the button to copy info'
+      }
+    },
+    mounted() {
+      this.loadSaved()
+      this.darkMode = localStorage.getItem('darkMode') === 'true'
+      if (this.darkMode) document.documentElement.classList.add('has-background-dark')
+    },
+    watch: {
+      darkMode(val) {
+        localStorage.setItem('darkMode', val)
+        document.documentElement.classList.toggle('has-background-dark', val)
+      }
+    },
+    methods: {
+      loadSaved() {
+        this.savedLocations = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []
+      },
+      saveToStore() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.savedLocations))
+      },
+      calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3
+        const toRad = x => x * Math.PI / 180
+        const dPhi = toRad(lat2 - lat1)
+        const dLam = toRad(lon2 - lon1)
+        const a = Math.sin(dPhi/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLam/2)**2
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+        return R * c
+      },
+      async getAddress(lat, lon) {
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-            const data = await response.json();
-            return data.display_name || "Address not found";
-        } catch (error) {
-            console.error("Reverse geocoding error:", error);
-            return "Address lookup failed";
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+          const data = await res.json()
+          return data.display_name || 'Address not found'
+        } catch (e) {
+          return 'Address lookup failed'
         }
-    }
-
-    function getSavedLocations() {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    }
-    
-    function displaySavedLocations() {
-        const locations = getSavedLocations();
-        savedList.innerHTML = '';
-        if (locations.length === 0) {
-            savedList.innerHTML = '<li>No locations saved yet.</li>';
-            return;
-        }
-        locations.forEach(loc => {
-            const li = document.createElement('li');
-            li.textContent = `${loc.label}: (${loc.coords.lat.toFixed(4)}, ${loc.coords.lon.toFixed(4)})`;
-            savedList.appendChild(li);
-        });
-    }
-
-    async function clipboardWrite(text) {
-        return new Promise((resolve, reject) => {
-            navigator.clipboard.writeText(text).then(() => {
-                statusDiv.textContent = 'Copied!';
-                resolve(true);
-            }).catch(err => {
-                statusDiv.textContent = 'Error: Could not copy text.';
-                console.error('Clipboard error:', err);
-                reject(err);
-            });
-        });
-    }
-
-    async function getCurrentLocationOrAddress() {
-        return new Promise((resolve, reject) => {
-            statusDiv.textContent = 'Getting location...';
-            if (!navigator.geolocation) {
-                statusDiv.textContent = "Geolocation is not supported.";
-                reject("Geolocation is not supported.");
+      },
+      async copyInfo() {
+        this.status = 'Getting location...'
+        navigator.geolocation.getCurrentPosition(async pos => {
+          const {latitude, longitude} = pos.coords
+          let locationString = ''
+          let matchFound = false
+          for (const loc of this.savedLocations) {
+            const d = this.calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon)
+            if (d <= 100) {
+              locationString = `at ${loc.label}`
+              matchFound = true
+              break
             }
-
-            navigator.geolocation.getCurrentPosition(async (position) => {
-                const savedLocations = getSavedLocations();
-                const { latitude, longitude } = position.coords;
-                let locationString;
-                let matchFound = false;
-        
-                for (const loc of savedLocations) {
-                    const distance = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon);
-                    if (distance <= 100) {
-                        locationString = `at ${loc.label}`;
-                        matchFound = true;
-                        break;
-                    }
-                }
-        
-                if (!matchFound) {
-                    statusDiv.textContent = 'No saved match. Looking up address...';
-                    const address = await getAddressFromCoords(latitude, longitude);
-                    locationString = `at ${address}`;
-                }
-        
-                const timestamp = new Date().toLocaleString('en-US', {
-                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-                    hour: 'numeric', minute: '2-digit', hour12: true
-                });
-        
-                const finalString = `[${timestamp} ${locationString}]`;
-        
-                // Prompt user to tap/click again to copy (ensures gesture)
-                statusDiv.innerHTML = `Ready: <code>${finalString}</code><br><button id="copyNowBtn">Copy to Clipboard</button>`;
-                document.getElementById('copyNowBtn').onclick = () => {
-                    navigator.clipboard.writeText(finalString).then(() => {
-                        statusDiv.textContent = 'Copied!';
-                    }).catch(err => {
-                        statusDiv.textContent = 'Error: Could not copy text.';
-                        console.error('Clipboard error:', err);
-                    });
-                };
-        
-            }, () => {
-                statusDiv.textContent = 'Error: Could not get location.';
-            });
-        });
-    }
-    
-    // --- Main Action ---
-
-    mainButton.addEventListener('click', async () => {
-        
-        navigator.geolocation.getCurrentPosition(async (position) => {
-            const savedLocations = getSavedLocations();
-            const { latitude, longitude } = position.coords;
-            let locationString;
-            let matchFound = false;
-    
-            for (const loc of savedLocations) {
-                const distance = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon);
-                if (distance <= 100) {
-                    locationString = `at ${loc.label}`;
-                    matchFound = true;
-                    break;
-                }
-            }
-    
-            if (!matchFound) {
-                statusDiv.textContent = 'No saved match. Looking up address...';
-                const address = await getAddressFromCoords(latitude, longitude);
-                locationString = `at ${address}`;
-            }
-    
-            const timestamp = new Date().toLocaleString('en-US', {
-                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-                hour: 'numeric', minute: '2-digit', hour12: true
-            });
-    
-            const finalString = `[${timestamp} ${locationString}]`;
-    
-            // Prompt user to tap/click again to copy (ensures gesture)
-            statusDiv.innerHTML = `Ready: <code>${finalString}</code><br><button id="copyNowBtn">Copy to Clipboard</button>`;
-            document.getElementById('copyNowBtn').onclick = () => {
-                navigator.clipboard.writeText(finalString).then(() => {
-                    statusDiv.textContent = 'Copied!';
-                }).catch(err => {
-                    statusDiv.textContent = 'Error: Could not copy text.';
-                    console.error('Clipboard error:', err);
-                });
-            };
-    
+          }
+          if (!matchFound) {
+            this.status = 'No saved match. Looking up address...'
+            const addr = await this.getAddress(latitude, longitude)
+            locationString = `at ${addr}`
+          }
+          const timestamp = new Date().toLocaleString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true
+          })
+          const finalStr = `[${timestamp} ${locationString}]`
+          this.status = `Ready: <code>${finalStr}</code>`
+          try {
+            await navigator.clipboard.writeText(finalStr)
+            this.status += '<br>Copied!'
+          } catch (e) {
+            this.status += '<br>Clipboard error.'
+          }
         }, () => {
-            statusDiv.textContent = 'Error: Could not get location.';
-        });
-    });
-
-    saveButton.addEventListener('click', () => {
-        const label = locationLabelInput.value.trim();
-        if (!label) {
-            alert('Please enter a label.');
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(position => {
-            const newLocation = {
-                label: label,
-                coords: { lat: position.coords.latitude, lon: position.coords.longitude }
-            };
-            const locations = getSavedLocations();
-            locations.push(newLocation);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
-            
-            locationLabelInput.value = '';
-            displaySavedLocations();
-            statusDiv.textContent = `Location "${label}" saved.`;
+          this.status = 'Error: Could not get location.'
+        })
+      },
+      saveLocation() {
+        if (!this.label.trim()) return
+        navigator.geolocation.getCurrentPosition(pos => {
+          this.savedLocations.push({ label: this.label.trim(), coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } })
+          this.saveToStore()
+          this.label = ''
+          this.status = `Location "${this.savedLocations[this.savedLocations.length-1].label}" saved.`
         }, () => {
-            statusDiv.textContent = 'Error: Could not get location to save it.';
-        });
-    });
-
-    // --- Export/Import ---
-
-    exportButton.addEventListener('click', () => {
-        const data = getSavedLocations();
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'locations.json';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    });
-
-    importButton.addEventListener('click', () => {
-        importFile.click();
-    });
-    importFile.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const imported = JSON.parse(event.target.result);
-                if (Array.isArray(imported)) {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
-                    displaySavedLocations();
-                    statusDiv.textContent = 'Locations imported!';
-                } else {
-                    statusDiv.textContent = 'Import failed: Invalid format.';
-                }
-            } catch (e) {
-                statusDiv.textContent = 'Import failed: Not valid JSON.';
+          this.status = 'Error: Could not get location to save it.'
+        })
+      },
+      exportLocations() {
+        const blob = new Blob([JSON.stringify(this.savedLocations, null, 2)], {type: 'application/json'})
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'locations.json'
+        a.click()
+        URL.revokeObjectURL(url)
+      },
+      triggerImport() {
+        this.$refs.importFile.click()
+      },
+      handleImport(e) {
+        const file = e.target.files[0]
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = evt => {
+          try {
+            const imported = JSON.parse(evt.target.result)
+            if (Array.isArray(imported)) {
+              this.savedLocations = imported
+              this.saveToStore()
+              this.status = 'Locations imported!'
+            } else {
+              this.status = 'Import failed: Invalid format.'
             }
-        };
-        reader.readAsText(file);
-    });
-
-    displaySavedLocations();
-});
-</script>
-
+          } catch {
+            this.status = 'Import failed: Not valid JSON.'
+          }
+        }
+        reader.readAsText(file)
+      }
+    }
+  }).use(Buefy).mount('#app')
+  </script>
 </body>
 </html>
