@@ -217,15 +217,76 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function clipboardWrite(text) {
+        return new Promise((resolve, reject) => {
+            navigator.clipboard.writeText(text).then(() => {
+                statusDiv.textContent = 'Copied!';
+                resolve(true);
+            }).catch(err => {
+                statusDiv.textContent = 'Error: Could not copy text.';
+                console.error('Clipboard error:', err);
+                reject(err);
+            });
+        });
+    }
+
+    async function getCurrentLocationOrAddress() {
+        return new Promise((resolve, reject) => {
+            statusDiv.textContent = 'Getting location...';
+            if (!navigator.geolocation) {
+                statusDiv.textContent = "Geolocation is not supported.";
+                reject("Geolocation is not supported.");
+            }
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const savedLocations = getSavedLocations();
+                const { latitude, longitude } = position.coords;
+                let locationString;
+                let matchFound = false;
+        
+                for (const loc of savedLocations) {
+                    const distance = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon);
+                    if (distance <= 100) {
+                        locationString = `at ${loc.label}`;
+                        matchFound = true;
+                        break;
+                    }
+                }
+        
+                if (!matchFound) {
+                    statusDiv.textContent = 'No saved match. Looking up address...';
+                    const address = await getAddressFromCoords(latitude, longitude);
+                    locationString = `at ${address}`;
+                }
+        
+                const timestamp = new Date().toLocaleString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                    hour: 'numeric', minute: '2-digit', hour12: true
+                });
+        
+                const finalString = `[${timestamp} ${locationString}]`;
+        
+                // Prompt user to tap/click again to copy (ensures gesture)
+                statusDiv.innerHTML = `Ready: <code>${finalString}</code><br><button id="copyNowBtn">Copy to Clipboard</button>`;
+                document.getElementById('copyNowBtn').onclick = () => {
+                    navigator.clipboard.writeText(finalString).then(() => {
+                        statusDiv.textContent = 'Copied!';
+                    }).catch(err => {
+                        statusDiv.textContent = 'Error: Could not copy text.';
+                        console.error('Clipboard error:', err);
+                    });
+                };
+        
+            }, () => {
+                statusDiv.textContent = 'Error: Could not get location.';
+            });
+        });
+    }
+    
     // --- Main Action ---
 
-    mainButton.addEventListener('click', () => {
-        statusDiv.textContent = 'Getting location...';
-        if (!navigator.geolocation) {
-            statusDiv.textContent = "Geolocation is not supported.";
-            return;
-        }
-    
+    mainButton.addEventListener('click', async () => {
+        
         navigator.geolocation.getCurrentPosition(async (position) => {
             const savedLocations = getSavedLocations();
             const { latitude, longitude } = position.coords;
