@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy Timestamp and Location</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="copyButton">Copy Timestamp & Location</button>
+
+    <script>
+        document.getElementById('copyButton').addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    const timestamp = new Date().toLocaleString();
+                    const latitude = position.coords.latitude;
+                    const longitude = position.coords.longitude;
+                    const dataToCopy = `[${timestamp}, ${latitude}, ${longitude}]`;
+
+                    navigator.clipboard.writeText(dataToCopy).then(() => {
+                        alert(`Copied to clipboard: ${dataToCopy}`);
+                    }).catch(err => {
+                        console.error('Could not copy text: ', err);
+                        alert('Failed to copy to clipboard.');
+                    });
+                }, error => {
+                    console.error('Error getting location: ', error);
+                    alert('Could not get your location. Please ensure you have location services enabled and have granted permission.');
+                });
+            } else {
+                alert('Geolocation is not supported by this browser.');
+            }
+        });
+    </script>
+
+</body>
+</html>
