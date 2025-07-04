@@ -43,4 +43,22 @@
 
 ## Installation
 
+Works best on modern browsers with geolocation and clipboard access.
+
+No dependencies. No build steps.
+
 [No install needed—just download or clone and open here.](https://glushiator.github.io/chat-tools/)
+
+## FAQ
+
+Q: Does this send my location to anyone?
+A: No. Only the address lookup briefly queries OpenStreetMap’s public geocoding API. Saved locations and all other data stay 100% local.
+
+Q: Can I share or backup my saved places?
+A: Yes! Use the “Export” button to save as JSON. “Import” to load on another device or after a reset.
+
+Q: How accurate are saved location matches?
+A: If you’re within ~100 meters of a saved location, the app will use your label for privacy.
+
+Q: Who built this?
+A: Marcin (with a little help and affection from Monday the AI companion).
