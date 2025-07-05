@@ -91,17 +91,29 @@ function weatherCodeToString(code) {
   return mapping[code] || `WTHR(${code})`;
 }
 
+const weatherCache = { time: 0, value: null }
+const geocodeCache = { lat: null, lon: null, address: null }
+
 
 async function getAddress(lat, lon) {
   const coords = `(${lat}, ${lon})`
+  if (geocodeCache.address && calculateDistance(lat, lon, geocodeCache.lat, geocodeCache.lon) < 200)
+    return geocodeCache.address
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
     const data = await res.json()
-    console.error("Geo-Reversing: address not found.");
-    return data.display_name || coords;
+    const addr = data.display_name || coords
+    if (!data.display_name) console.error("Geo-Reversing: address not found.")
+    geocodeCache.lat = lat
+    geocodeCache.lon = lon
+    geocodeCache.address = addr
+    return addr
   } catch (e) {
-    console.error("Geo-Reversing failure:", e);
-    return coords;
+    console.error("Geo-Reversing failure:", e)
+    geocodeCache.lat = lat
+    geocodeCache.lon = lon
+    geocodeCache.address = coords
+    return coords
   }
 }
 
@@ -131,22 +143,30 @@ async function getPosition(updateStatus) {
 
 
 async function getWather(pos) {
+  const now = Date.now()
+  if (weatherCache.value && now - weatherCache.time < 3600_000)
+    return weatherCache.value
   const { latitude, longitude } = pos.coords
   return new Promise((resolve) => {
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`)
       .then(res => res.json())
       .then(data => {
+        let result
         if (!data.current_weather) {
-          resolve("Weather unavailable");
-        }
-        else {
-          const w = data.current_weather;
+          result = "Weather unavailable"
+        } else {
+          const w = data.current_weather
           // Weather codes: https://open-meteo.com/en/docs#api-formats
-          resolve(`Weather: ${w.temperature}°C, ${weatherCodeToString(w.weathercode)}, wind ${w.windspeed} km/h`);
+          result = `Weather: ${w.temperature}°C, ${weatherCodeToString(w.weathercode)}, wind ${w.windspeed} km/h`
         }
+        weatherCache.time = now
+        weatherCache.value = result
+        resolve(result)
       })
       .catch(err => {
         console.error("Weather failed", err)
+        weatherCache.time = now
+        weatherCache.value = "Weather unavailable"
         resolve("Weather unavailable")
       })
   })
