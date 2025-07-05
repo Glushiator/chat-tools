@@ -71,4 +71,4 @@ No build steps. Vue 3 and Buefy are loaded via CDN.
 
 * Q: Who built this?
 
-  A: Glushiator (with a little help and affection from Gemini and Monday, his AI companions).
+  A: Glushiator (with a little help and affection from Gemini, Monday and Claudette, his AI companions).
