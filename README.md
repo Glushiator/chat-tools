@@ -18,20 +18,26 @@
 - **Dark Mode:**  
   Sleek toggle for day or night use. Preference is remembered.
 
-- **Export / Import Locations:**  
+- **Export / Import Locations:**
   Backup or transfer your saved locations as a simple JSON file—easy, secure, no cloud required.
 
+- **Current Weather:**
+  Adds local conditions from Open-Meteo to the copied timestamp.
+
+- **Built with Vue 3 + Buefy:**
+  Lightweight UI powered entirely by CDN resources.
+
 - **Privacy-respecting:**  
-  All data stays local to your device. Only the address lookup uses the internet, and that’s via free, public OSM APIs.
+  All data stays local to your device. Only the address and weather lookups use the internet, and that’s via free, public APIs.
 
 ---
 
 ## How To Use
 
 1. **Open `index.html` in your browser** (mobile or desktop).
-2. **Press “Copy Timestamp & Location”:**  
-   - If near a saved place, you’ll get e.g., `[Fri, Jul 4, 2025, 3:32 PM at Home]`  
-   - Otherwise, you’ll get `[Fri, Jul 4, 2025, 3:32 PM at 123 Main St, Springfield...]`
+2. **Press “Copy Timestamp & Location”:**
+   - If near a saved place, you’ll get e.g., `[Fri, Jul 4, 2025, 3:32 PM at Home; Weather: 22°C, Clear sky]`
+   - Otherwise, you’ll get `[Fri, Jul 4, 2025, 3:32 PM at 123 Main St, Springfield...; Weather: 22°C, Clear sky]`
    - The result is instantly copied to your clipboard—paste anywhere!
 3. **Manage Saved Locations:**  
    - Add a label (e.g., “Home”), hit “Save Current Location” to store.
@@ -45,15 +51,15 @@
 
 Works best on modern browsers with geolocation and clipboard access.
 
-No dependencies. No build steps.
+No build steps. Vue 3 and Buefy are loaded via CDN.
 
 [No install needed, just open here.](https://glushiator.github.io/chat-tools/)
 
 ## FAQ
 
 * Q: Does this send my location to anyone?
-  
-  A: No. Only the address lookup briefly queries OpenStreetMap’s public geocoding API. Saved locations and all other data stay 100% local.
+
+  A: No. Only the address and weather lookups briefly query public APIs (OpenStreetMap and Open-Meteo). Saved locations and all other data stay 100% local.
 
 * Q: Can I share or backup my saved places?
 
