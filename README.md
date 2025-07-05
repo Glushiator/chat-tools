@@ -53,6 +53,9 @@ Works best on modern browsers with geolocation and clipboard access.
 
 No build steps. Vue 3 and Buefy are loaded via CDN.
 
+This site now includes a web manifest so you can "Add to Home Screen" on most
+mobile browsers and run it like a standalone app.
+
 [No install needed, just open here.](https://glushiator.github.io/chat-tools/)
 
 ## FAQ
