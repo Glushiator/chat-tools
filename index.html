@@ -106,9 +106,9 @@
         const clipboardWriter = new ClipboardWriter()
         const pos = await getPosition(this.updateStatus)
         console.log("current position:", pos)
-        const timestamp = this.currenTimestamp()
-        const locationString = this.identifyPosition(pos, this.savedLocations, this.updateStatus)
-        const weatherInfo = this.getWather(pos)
+        const timestamp = currenTimestamp()
+        const locationString = identifyPosition(pos, this.savedLocations, this.updateStatus)
+        const weatherInfo = getWather(pos)
         const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
         try {
           await clipboardWriter.writeText(finalStr)
