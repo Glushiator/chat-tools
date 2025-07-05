@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/buefy@1/dist/buefy.min.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Buefy components goes here -->
+        <b-button label="Click me!"></b-button>
+    </div>
+
+    <script src="https://unpkg.com/vue@3"></script>
+    <script src="https://unpkg.com/buefy@1/dist/buefy.min.js"></script>
+
+    <script>
+        const app = Vue.createApp({})
+        app.use(Buefy.default)
+        app.mount("#app")
+    </script>
+</body>
+</html>
