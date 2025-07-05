@@ -1,26 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Geo-Timestamp</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/buefy/dist/buefy.min.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@5.8.55/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.2.0/css/all.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/buefy@1/dist/buefy.min.css">
   <style>
     body { padding: 1rem; }
     #app { max-width: 600px; margin: auto; }
+    .hidden { visibility: hidden; }
     pre { white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <div id="app">
-    <section>
+    <tools-app></tools-app>
+  </div>
+
+  <template id="tools-app-template">
+    <section class="box">
       <b-field label="Dark mode" horizontal>
         <b-switch v-model="darkMode"></b-switch>
       </b-field>
     </section>
 
     <section class="box">
-      <b-button type="is-primary" @click="copyInfo" expanded>Copy Timestamp &amp; Location</b-button>
+      <b-button type="is-primary" @click="copyInfo" expanded label="Copy Timestamp &amp; Location"></b-button>
       <p class="mt-2" v-html="status"></p>
     </section>
 
@@ -35,42 +42,139 @@
         <b-button type="is-warning" @click="triggerImport">Import</b-button>
         <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
       </div>
-      <b-table :data="savedLocations" :key="savedLocations.length" :paginated="false"
-               detailed>
-        <template #default="props">
-          <b-table-column field="label" label="Label" width="40%">
-            {{ props.row.label }}
-          </b-table-column>
-          <b-table-column label="Lat">
-            {{ props.row.coords.lat.toFixed(4) }}
-          </b-table-column>
-          <b-table-column label="Lon">
-            {{ props.row.coords.lon.toFixed(4) }}
-          </b-table-column>
-        </template>
-      </b-table>
       <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
+      <b-table v-else :data="savedLocations" :columns="savedLocationsColumns">
+      </b-table>
     </section>
-  </div>
+  </template>
 
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/buefy/dist/buefy.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/buefy@1/dist/buefy.min.js"></script>
   <script>
+
+  class Future extends Promise {
+    constructor(executor) {
+      let resolveRef, rejectRef;
+      
+      // Call parent Promise constructor
+      super((resolve, reject) => {
+        resolveRef = resolve;
+        rejectRef = reject;
+        
+        // If executor provided, run it like normal Promise
+        if (executor && typeof executor === 'function') {
+          try {
+            executor(resolve, reject);
+          } catch (error) {
+            reject(error);
+          }
+        }
+      });
+      
+      // Expose resolve/reject methods externally
+      this.resolve = resolveRef;
+      this.reject = rejectRef;
+    }
+    
+    // Static factory method for simple cases
+    static create() {
+      return new Future();
+    }
+  }
+
+  class ClipboardWriter {
+    constructor() {
+      this.completed = false;
+      this.clipboardInput = Future.create()
+      this.clipboardResult = Future.create()
+      const data = [new ClipboardItem({ "text/plain": this.clipboardInput })];
+      navigator.clipboard
+        .write(data)
+        .then(() => this.clipboardResult.resolve(true))
+        .catch((err) => this.clipboardResult.reject(err.message))
+    }
+
+    async cancel() {
+      if (this.completed)
+        throw new Error("Write operation already completed.")
+      this.completed = true
+      this.clipboardInput.reject("Clipboard write canceled.");
+      try {
+        await this.clipboardResult
+      }
+      catch {
+        return
+      }
+    }
+
+    async writeText(text) {
+      if (this.completed)
+        throw new Error("Write operation already completed.")
+      this.completed = true
+      this.clipboardInput.resolve(new Blob([text], { type: "text/plain" }))
+      return this.clipboardResult;
+    }
+  }
+
+  function weatherCodeToString(code) {
+    // Simplified mapping; expand as needed
+    const mapping = {
+      0: "Clear sky",
+      1: "Mainly clear",
+      2: "Partly cloudy",
+      3: "Overcast",
+      45: "Fog",
+      48: "Depositing rime fog",
+      51: "Light drizzle",
+      53: "Drizzle",
+      55: "Dense drizzle",
+      61: "Slight rain",
+      63: "Rain",
+      65: "Heavy rain",
+      71: "Slight snow",
+      73: "Snow",
+      75: "Heavy snow",
+      80: "Rain showers",
+      81: "Heavy rain showers",
+      82: "Violent rain showers",
+      95: "Thunderstorm",
+      99: "Thunderstorm with hail"
+    };
+    return mapping[code] || `WTHR(${code})`;
+  }
+
   const STORAGE_KEY = 'savedLocations'
-  const { createApp } = Vue
-  createApp({
+  const app = Vue.createApp({})
+  app.use(Buefy.default)
+  app.component('tools-app', {
+    template: '#tools-app-template',
     data() {
       return {
         label: '',
+        savedLocationsColumns: [
+          {
+            field: "label",
+            label: "Label",
+          },
+          {
+            field: "coords.lat",
+            label: "Lat",
+          },
+          {
+            field: "coords.lon",
+            label: "Lon",
+          },
+        ],
         savedLocations: [],
         darkMode: false,
-        status: 'Click the button to copy info'
+        status: 'Click the button to copy info',
       }
     },
     mounted() {
       this.loadSaved()
       this.darkMode = localStorage.getItem('darkMode') === 'true'
       if (this.darkMode) document.documentElement.classList.add('has-background-dark')
+      document.getElementById("app").classList.remove("hidden")
     },
     watch: {
       darkMode(val) {
@@ -95,48 +199,90 @@
         return R * c
       },
       async getAddress(lat, lon) {
+        const coords = `(${lat}, ${lon})`
         try {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
           const data = await res.json()
-          return data.display_name || 'Address not found'
+          console.error("Geo-Reversing: address not found.");
+          return data.display_name || coords;
         } catch (e) {
-          return 'Address lookup failed'
+          console.error("Geo-Reversing failure:", e);
+          return coords;
         }
       },
-      async copyInfo() {
+      async identifyPosition(pos) {
+        const {latitude, longitude} = pos.coords
+        let locationString = ''
+        let matchFound = false
+        for (const loc of this.savedLocations) {
+          const d = this.calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon)
+          if (d <= 100) {
+            locationString = `at ${loc.label}`
+            matchFound = true
+            break
+          }
+        }
+        if (!matchFound) {
+          this.status = 'No saved match. Looking up address...'
+          const addr = await this.getAddress(latitude, longitude)
+          locationString = `at ${addr}`
+        }
+        return locationString
+      },
+      async getPosition() {
         this.status = 'Getting location...'
-        navigator.geolocation.getCurrentPosition(async pos => {
-          const {latitude, longitude} = pos.coords
-          let locationString = ''
-          let matchFound = false
-          for (const loc of this.savedLocations) {
-            const d = this.calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon)
-            if (d <= 100) {
-              locationString = `at ${loc.label}`
-              matchFound = true
-              break
-            }
-          }
-          if (!matchFound) {
-            this.status = 'No saved match. Looking up address...'
-            const addr = await this.getAddress(latitude, longitude)
-            locationString = `at ${addr}`
-          }
-          const timestamp = new Date().toLocaleString('en-US', {
-            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-            hour: 'numeric', minute: '2-digit', hour12: true
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(async pos => {
+            resolve(pos)
+          }, () => {
+            this.status = 'Error: Could not get location.'
+            resolve({coords: {lotitude: 0, longitude: 0}})
           })
-          const finalStr = `[${timestamp} ${locationString}]`
-          this.status = `Ready: <code>${finalStr}</code>`
-          try {
-            await navigator.clipboard.writeText(finalStr)
-            this.status += '<br>Copied!'
-          } catch (e) {
-            this.status += '<br>Clipboard error.'
-          }
-        }, () => {
-          this.status = 'Error: Could not get location.'
+        });
+      },
+      async getWather(pos) {
+        const {latitude, longitude} = pos.coords
+        return new Promise((resolve, reject) => {
+          fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`)
+            .then(res => res.json())
+            .then(data => {
+              if (!data.current_weather) {
+                resolve("Weather unavailable");
+              }
+              else {
+                const w = data.current_weather;
+                // Weather codes: https://open-meteo.com/en/docs#api-formats
+                resolve(`Weather: ${w.temperature}°C, ${weatherCodeToString(w.weathercode)}, wind ${w.windspeed} km/h`);
+              }
+            })
+            .catch(err => {
+              console.error("Weather failed", err)
+              resolve("Weather unavailable")
+            })
         })
+      },
+      currenTimestamp() {
+        return new Date().toLocaleString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+          hour: 'numeric', minute: '2-digit', hour12: true
+        })
+      },
+      async copyInfo() {
+        const clipboardWriter = new ClipboardWriter();
+        const pos = await this.getPosition()
+        console.log("current position:", pos)
+        const timestamp = this.currenTimestamp()
+        const locationString = this.identifyPosition(pos)
+        const weatherInfo = this.getWather(pos)
+        const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
+        try {
+          await clipboardWriter.writeText(finalStr)
+          this.status += '<br>Copied!'
+        }
+        catch (e) {
+          console.error('Clipboard error', e)
+          this.status += '<br>Clipboard error.'
+        }
       },
       saveLocation() {
         if (!this.label.trim()) return
@@ -182,7 +328,8 @@
         reader.readAsText(file)
       }
     }
-  }).use(Buefy).mount('#app')
+  })
+  app.mount('#app')
   </script>
 </body>
 </html>
