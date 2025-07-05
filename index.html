@@ -277,11 +277,17 @@
         const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
         try {
           await clipboardWriter.writeText(finalStr)
-          this.status += '<br>Copied!'
+          this.$buefy.toast.open({
+            message: finalStr,
+            type: 'is-success'
+          })
         }
         catch (e) {
           console.error('Clipboard error', e)
-          this.status += '<br>Clipboard error.'
+          this.$buefy.toast.open({
+            message: 'Clipboard error.',
+            type: 'is-danger'
+          })
         }
       },
       saveLocation() {
