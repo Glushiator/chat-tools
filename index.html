@@ -43,7 +43,20 @@
         <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
       </div>
       <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
-      <b-table v-else :data="savedLocations" :columns="savedLocationsColumns">
+      <b-table v-else :data="savedLocations" v-slot="props">
+        <b-table-column field="label" label="Label">
+          {{ props.row.label }}
+        </b-table-column>
+        <b-table-column field="coords.lat" label="Lat">
+          {{ props.row.coords.lat }}
+        </b-table-column>
+        <b-table-column field="coords.lon" label="Lon">
+          {{ props.row.coords.lon }}
+        </b-table-column>
+        <b-table-column label="">
+          <b-button type="is-danger" size="is-small" icon-left="delete"
+            @click="removeLocation(props.index)"></b-button>
+        </b-table-column>
       </b-table>
     </section>
   </template>
@@ -151,20 +164,6 @@
     data() {
       return {
         label: '',
-        savedLocationsColumns: [
-          {
-            field: "label",
-            label: "Label",
-          },
-          {
-            field: "coords.lat",
-            label: "Lat",
-          },
-          {
-            field: "coords.lon",
-            label: "Lon",
-          },
-        ],
         savedLocations: [],
         darkMode: false,
         status: 'Click the button to copy info',
@@ -300,6 +299,11 @@
         }, () => {
           this.status = 'Error: Could not get location to save it.'
         })
+      },
+      removeLocation(idx) {
+        this.savedLocations.splice(idx, 1)
+        this.saveToStore()
+        this.status = 'Location removed.'
       },
       exportLocations() {
         const blob = new Blob([JSON.stringify(this.savedLocations, null, 2)], {type: 'application/json'})
