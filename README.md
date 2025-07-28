@@ -24,6 +24,10 @@
 - **Current Weather:**
   Adds local conditions from Open-Meteo to the copied timestamp.
 
+- **Offline Capable:**
+  Once loaded, the app installs a service worker so it continues to work without
+  an internet connection (address and weather will fall back to placeholders).
+
 - **Built with Vue 3 + Buefy:**
   Lightweight UI powered entirely by CDN resources.
 
@@ -55,6 +59,9 @@ No build steps. Vue 3 and Buefy are loaded via CDN.
 
 This site now includes a web manifest so you can "Add to Home Screen" on most
 mobile browsers and run it like a standalone app.
+
+After the first visit, a service worker caches the app so it continues to work
+offline (address and weather lookups will simply show as unavailable).
 
 [No install needed, just open here.](https://glushiator.github.io/chat-tools/)
 
