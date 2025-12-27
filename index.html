@@ -30,39 +30,45 @@
       </b-field>
     </section>
 
-    <section class="box">
-      <b-button type="is-primary" @click="copyInfo" expanded label="Copy Timestamp &amp; Location"></b-button>
-      <p class="mt-2" v-html="status"></p>
-    </section>
+    <b-tabs v-model="activeTab" type="is-boxed" expanded>
+      <b-tab-item label="Copy Location" icon="map-marker">
+        <section class="box">
+          <b-button type="is-primary" @click="copyInfo" expanded label="Copy Timestamp &amp; Location"></b-button>
+          <p class="mt-2" v-html="status"></p>
+        </section>
+      </b-tab-item>
 
-    <section class="box">
-      <h3 class="title is-5">Manage Saved Locations</h3>
-      <b-field label="Label">
-        <b-input v-model="label" placeholder="Enter label"></b-input>
-      </b-field>
-      <b-button type="is-success" @click="saveLocation" expanded class="mb-2">Save Current Location</b-button>
-      <div class="buttons">
-        <b-button type="is-link" @click="exportLocations">Export</b-button>
-        <b-button type="is-warning" @click="triggerImport">Import</b-button>
-        <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
-      </div>
-      <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
-      <b-table v-else :data="savedLocations">
-        <b-table-column field="label" label="Label" v-slot="props">
-          {{ props.row.label }}
-        </b-table-column>
-        <b-table-column field="coords.lat" label="Lat" v-slot="props">
-          {{ props.row.coords.lat }}
-        </b-table-column>
-        <b-table-column field="coords.lon" label="Lon" v-slot="props">
-          {{ props.row.coords.lon }}
-        </b-table-column>
-        <b-table-column label="" v-slot="props">
-          <b-button type="is-danger" size="is-small" icon-left="delete"
-            @click="removeLocation(props.index)"></b-button>
-        </b-table-column>
-      </b-table>
-    </section>
+      <b-tab-item label="Settings" icon="cog">
+        <section class="box">
+          <h3 class="title is-5">Manage Saved Locations</h3>
+          <b-field label="Label">
+            <b-input v-model="label" placeholder="Enter label"></b-input>
+          </b-field>
+          <b-button type="is-success" @click="saveLocation" expanded class="mb-2">Save Current Location</b-button>
+          <div class="buttons">
+            <b-button type="is-link" @click="exportLocations">Export</b-button>
+            <b-button type="is-warning" @click="triggerImport">Import</b-button>
+            <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
+          </div>
+          <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
+          <b-table v-else :data="savedLocations">
+            <b-table-column field="label" label="Label" v-slot="props">
+              {{ props.row.label }}
+            </b-table-column>
+            <b-table-column field="coords.lat" label="Lat" v-slot="props">
+              {{ props.row.coords.lat }}
+            </b-table-column>
+            <b-table-column field="coords.lon" label="Lon" v-slot="props">
+              {{ props.row.coords.lon }}
+            </b-table-column>
+            <b-table-column label="" v-slot="props">
+              <b-button type="is-danger" size="is-small" icon-left="delete"
+                @click="removeLocation(props.index)"></b-button>
+            </b-table-column>
+          </b-table>
+        </section>
+      </b-tab-item>
+    </b-tabs>
   </template>
 
   <script src="./unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -81,6 +87,7 @@
         savedLocations: [],
         darkMode: false,
         status: 'Click the button to copy info',
+        activeTab: 0,
       }
     },
     mounted() {
