@@ -1,4 +1,4 @@
-const CACHE_NAME = 'geo-timestamp-cache-v2';
+const CACHE_NAME = 'geo-timestamp-cache-v3';
 const OFFLINE_URL = './index.html';
 const PRECACHE_ASSETS = [
   './index.html',
