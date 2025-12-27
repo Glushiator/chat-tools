@@ -49,7 +49,6 @@
       <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
       <b-table v-else :data="savedLocations">
         <b-table-column field="label" label="Label" v-slot="props">
-          {{ console.log('props', props) }}
           {{ props.row.label }}
         </b-table-column>
         <b-table-column field="coords.lat" label="Lat" v-slot="props">
@@ -110,9 +109,9 @@
         const clipboardWriter = new ClipboardWriter()
         const pos = await getPosition(this.updateStatus)
         console.log("current position:", pos)
-        const timestamp = currenTimestamp()
+        const timestamp = currentTimestamp()
         const locationString = identifyPosition(pos, this.savedLocations, this.updateStatus)
-        const weatherInfo = getWather(pos)
+        const weatherInfo = getWeather(pos)
         const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
         try {
           await clipboardWriter.writeText(finalStr)

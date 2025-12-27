@@ -144,13 +144,13 @@ async function getPosition(updateStatus) {
       resolve(pos)
     }, () => {
       updateStatus('Error: Could not get location.')
-      resolve({ coords: { lotitude: 0, longitude: 0 } })
+      resolve({ coords: { latitude: 0, longitude: 0 } })
     })
   })
 }
 
 
-async function getWather(pos) {
+async function getWeather(pos) {
   const now = Date.now()
   if (weatherCache.value && now - weatherCache.time < 3600_000)
     return weatherCache.value
@@ -181,7 +181,7 @@ async function getWather(pos) {
 }
 
 
-function currenTimestamp() {
+function currentTimestamp() {
   return new Date().toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true

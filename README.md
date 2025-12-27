@@ -39,9 +39,9 @@
 ## How To Use
 
 1. **Open `index.html` in your browser** (mobile or desktop).
-2. **Press “Copy Timestamp & Location”:**
-   - If near a saved place, you’ll get e.g., `[Fri, Jul 4, 2025, 3:32 PM at Home; Weather: 22°C, Clear sky]`
-   - Otherwise, you’ll get `[Fri, Jul 4, 2025, 3:32 PM at 123 Main St, Springfield...; Weather: 22°C, Clear sky]`
+2. **Press "Copy Timestamp & Location":**
+   - If near a saved place, you'll get e.g., `[Fri, Jul 4, 2025, 3:32 PM at Home; Weather: 22°C, Clear sky, wind 12 km/h]`
+   - Otherwise, you'll get `[Fri, Jul 4, 2025, 3:32 PM at 123 Main St, Springfield...; Weather: 22°C, Clear sky, wind 12 km/h]`
    - The result is instantly copied to your clipboard—paste anywhere!
 3. **Manage Saved Locations:**  
    - Add a label (e.g., “Home”), hit “Save Current Location” to store.
@@ -65,6 +65,33 @@ offline (address and weather lookups will simply show as unavailable).
 
 [No install needed, just open here.](https://glushiator.github.io/chat-tools/)
 
+---
+
+## Technical Details
+
+### Architecture
+- **Frontend**: Vue 3 with Buefy component library
+- **Geocoding**: OpenStreetMap Nominatim API (free, no API key required)
+- **Weather**: Open-Meteo API (free, no API key required)
+- **Storage**: Browser localStorage for saved locations and preferences
+- **Offline Support**: Service Worker with precached resources
+- **Clipboard**: Advanced clipboard API with promise-based writing
+
+### Key Features Implementation
+- **Distance Calculation**: Haversine formula for accurate geo-distance
+- **Caching**: 200m radius for geocoding, 1-hour TTL for weather data
+- **Location Matching**: 100m proximity threshold for saved locations
+- **Progressive Web App**: Installable via manifest.json
+
+### File Structure
+- `index.html` - Main application UI
+- `index.js` - Core utilities (geolocation, weather, clipboard)
+- `service-worker.js` - Offline caching and PWA functionality
+- `manifest.json` - PWA configuration
+- Local CDN mirrors for offline operation
+
+---
+
 ## FAQ
 
 * Q: Does this send my location to anyone?
@@ -82,3 +109,30 @@ offline (address and weather lookups will simply show as unavailable).
 * Q: Who built this?
 
   A: Glushiator (with a little help and affection from Gemini, Monday and Claudette, his AI companions).
+
+---
+
+## Contributing
+
+This project is open source (Unlicense) and contributions are welcome!
+
+To contribute:
+1. Fork the repository
+2. Make your changes
+3. Test thoroughly (especially on mobile devices)
+4. Submit a pull request
+
+Areas that could use improvement:
+- Add more weather code mappings (see `weatherCodeToString` in `index.js`)
+- Improve error handling and user feedback
+- Add unit tests
+- Enhance accessibility (ARIA labels, keyboard navigation)
+- Add i18n/localization support
+- Add ability to edit saved location labels
+- Add option to customize timestamp format
+
+---
+
+## License
+
+This project is released into the public domain under the [Unlicense](LICENSE). Use it however you want!
