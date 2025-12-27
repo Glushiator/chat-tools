@@ -208,6 +208,7 @@
           <h3 class="title is-5">App Updates</h3>
           <b-button type="is-info" @click="checkForUpdates" expanded icon-left="refresh">Check for Updates</b-button>
           <p v-if="updateStatus" class="mt-2">{{ updateStatus }}</p>
+          <p class="mt-2 has-text-grey is-size-7">Version: {{ cacheVersion }}</p>
 
           <hr>
 
@@ -263,10 +264,12 @@
         status: 'Ready. Click the button above to copy timestamp and location.',
         activeTab: 0,
         updateStatus: '',
+        cacheVersion: 'unknown',
       }
     },
     mounted() {
       this.loadSaved()
+      this.loadCacheVersion()
       this.darkMode = localStorage.getItem('darkMode') === 'true'
       if (this.darkMode) document.documentElement.classList.add('has-background-dark')
       document.getElementById("app").classList.remove("hidden")
@@ -280,6 +283,17 @@
     methods: {
       loadSaved() {
         this.savedLocations = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []
+      },
+      async loadCacheVersion() {
+        try {
+          const keys = await caches.keys()
+          const cacheKey = keys.find(k => k.startsWith('geo-timestamp-cache-'))
+          if (cacheKey) {
+            this.cacheVersion = cacheKey.replace('geo-timestamp-cache-', '')
+          }
+        } catch (e) {
+          console.error('Could not get cache version:', e)
+        }
       },
       saveToStore() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.savedLocations))
