@@ -174,18 +174,17 @@
           const pos = await getPosition(this.updateStatus)
           console.log("current position:", pos)
 
-          // Step 2: Format timestamp
-          this.updateStatus('Formatting timestamp...')
+          // Step 2: Format timestamp (instant)
           const timestamp = currentTimestamp()
 
-          // Step 3: Identify/geocode location
-          const locationString = await identifyPosition(pos, this.savedLocations, this.updateStatus)
+          // Step 3: Run geocoding and weather lookup concurrently
+          this.updateStatus('Getting address and weather...')
+          const [locationString, weatherInfo] = await Promise.all([
+            identifyPosition(pos, this.savedLocations, this.updateStatus),
+            getWeather(pos)
+          ])
 
-          // Step 4: Get weather
-          this.updateStatus('Getting weather...')
-          const weatherInfo = await getWeather(pos)
-
-          // Step 5: Combine and copy
+          // Step 4: Combine and copy
           this.updateStatus('Copying to clipboard...')
           const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
           await clipboardWriter.writeText(finalStr)
