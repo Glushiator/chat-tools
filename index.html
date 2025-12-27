@@ -207,7 +207,7 @@
         <section class="box">
           <h3 class="title is-5">App Updates</h3>
           <b-button type="is-info" @click="checkForUpdates" expanded icon-left="refresh">Check for Updates</b-button>
-          <p v-if="updateStatus" class="mt-2">{{ updateStatus }}</p>
+          <p v-if="appUpdateStatus" class="mt-2">{{ appUpdateStatus }}</p>
           <p class="mt-2 has-text-grey is-size-7">Version: {{ cacheVersion }}</p>
 
           <hr>
@@ -263,7 +263,7 @@
         darkMode: false,
         status: 'Ready. Click the button above to copy timestamp and location.',
         activeTab: 0,
-        updateStatus: '',
+        appUpdateStatus: '',
         cacheVersion: 'unknown',
       }
     },
@@ -438,10 +438,10 @@
         e.target.value = ''
       },
       async checkForUpdates() {
-        this.updateStatus = 'Checking for updates...'
+        this.appUpdateStatus = 'Checking for updates...'
 
         if (!('serviceWorker' in navigator)) {
-          this.updateStatus = 'Service worker not supported.'
+          this.appUpdateStatus = 'Service worker not supported.'
           return
         }
 
@@ -449,7 +449,7 @@
           const registration = await navigator.serviceWorker.getRegistration()
 
           if (!registration) {
-            this.updateStatus = 'No service worker registered.'
+            this.appUpdateStatus = 'No service worker registered.'
             return
           }
 
@@ -458,27 +458,27 @@
 
           // Check if there's a new service worker waiting
           if (registration.waiting) {
-            this.updateStatus = 'Update found! Reloading app...'
+            this.appUpdateStatus = 'Update found! Reloading app...'
             // Tell the waiting service worker to take over
             registration.waiting.postMessage({ type: 'SKIP_WAITING' })
             // Reload the page to activate the new service worker
             setTimeout(() => window.location.reload(), 500)
           } else if (registration.installing) {
-            this.updateStatus = 'Update installing...'
+            this.appUpdateStatus = 'Update installing...'
             // Wait for it to finish installing
             registration.installing.addEventListener('statechange', (e) => {
               if (e.target.state === 'installed') {
-                this.updateStatus = 'Update ready! Reloading app...'
+                this.appUpdateStatus = 'Update ready! Reloading app...'
                 setTimeout(() => window.location.reload(), 500)
               }
             })
           } else {
-            this.updateStatus = 'App is up to date!'
-            setTimeout(() => this.updateStatus = '', 3000)
+            this.appUpdateStatus = 'App is up to date!'
+            setTimeout(() => this.appUpdateStatus = '', 3000)
           }
         } catch (error) {
           console.error('Update check failed:', error)
-          this.updateStatus = 'Update check failed. Please try again.'
+          this.appUpdateStatus = 'Update check failed. Please try again.'
         }
       }
     }
