@@ -138,12 +138,10 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 
 async function getPosition(updateStatus) {
-  updateStatus('Getting location...');
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(async pos => {
       resolve(pos)
     }, () => {
-      updateStatus('Error: Could not get location.')
       resolve({ coords: { latitude: 0, longitude: 0 } })
     })
   })
@@ -202,7 +200,7 @@ async function identifyPosition(pos, savedLocations, updateStatus) {
     }
   }
   if (!matchFound) {
-    updateStatus('No saved match. Looking up address...')
+    if (updateStatus) updateStatus('Reverse geocoding address...')
     const addr = await getAddress(latitude, longitude)
     locationString = `at ${addr}`
   }

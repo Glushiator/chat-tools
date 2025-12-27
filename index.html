@@ -16,6 +16,59 @@
     #app { max-width: 600px; margin: auto; }
     .hidden { visibility: hidden; }
     pre { white-space: pre-wrap; }
+
+    /* Dark mode styles */
+    .has-background-dark {
+      background-color: #363636 !important;
+      color: #f5f5f5;
+    }
+    .has-background-dark .box {
+      background-color: #2b2b2b;
+      color: #f5f5f5;
+    }
+    .has-background-dark .tabs {
+      background-color: transparent;
+    }
+    .has-background-dark .tabs li a {
+      color: #b5b5b5;
+      border-bottom-color: #4a4a4a;
+    }
+    .has-background-dark .tabs li.is-active a {
+      color: #f5f5f5;
+      border-bottom-color: #3273dc;
+    }
+    .has-background-dark .tabs li a:hover {
+      color: #f5f5f5;
+      border-bottom-color: #b5b5b5;
+    }
+    .has-background-dark .title {
+      color: #f5f5f5;
+    }
+    .has-background-dark .label {
+      color: #f5f5f5;
+    }
+    .has-background-dark .input {
+      background-color: #363636;
+      border-color: #4a4a4a;
+      color: #f5f5f5;
+    }
+    .has-background-dark .input:focus {
+      border-color: #3273dc;
+    }
+    .has-background-dark .table {
+      background-color: #2b2b2b;
+      color: #f5f5f5;
+    }
+    .has-background-dark .table th {
+      color: #f5f5f5;
+    }
+    .has-background-dark .table td {
+      border-color: #4a4a4a;
+      color: #f5f5f5;
+    }
+    .has-background-dark p {
+      color: #f5f5f5;
+    }
   </style>
 </head>
 <body>
@@ -86,7 +139,7 @@
         label: '',
         savedLocations: [],
         darkMode: false,
-        status: 'Click the button to copy info',
+        status: 'Ready. Click the button above to copy timestamp and location.',
         activeTab: 0,
       }
     },
@@ -113,24 +166,42 @@
         this.status = text;
       },
       async copyInfo() {
-        const clipboardWriter = new ClipboardWriter()
-        const pos = await getPosition(this.updateStatus)
-        console.log("current position:", pos)
-        const timestamp = currentTimestamp()
-        const locationString = identifyPosition(pos, this.savedLocations, this.updateStatus)
-        const weatherInfo = getWeather(pos)
-        const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
         try {
+          const clipboardWriter = new ClipboardWriter()
+
+          // Step 1: Get position
+          this.updateStatus('Getting location...')
+          const pos = await getPosition(this.updateStatus)
+          console.log("current position:", pos)
+
+          // Step 2: Format timestamp
+          this.updateStatus('Formatting timestamp...')
+          const timestamp = currentTimestamp()
+
+          // Step 3: Identify/geocode location
+          const locationString = await identifyPosition(pos, this.savedLocations, this.updateStatus)
+
+          // Step 4: Get weather
+          this.updateStatus('Getting weather...')
+          const weatherInfo = await getWeather(pos)
+
+          // Step 5: Combine and copy
+          this.updateStatus('Copying to clipboard...')
+          const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
           await clipboardWriter.writeText(finalStr)
+
+          // Success
+          this.updateStatus('Copied.')
           this.$buefy.toast.open({
             message: finalStr,
             type: 'is-success'
           })
         }
         catch (e) {
-          console.error('Clipboard error', e)
+          console.error('Error during copy operation:', e)
+          this.updateStatus('Error: Could not copy.')
           this.$buefy.toast.open({
-            message: 'Clipboard error.',
+            message: 'Error: Could not copy to clipboard.',
             type: 'is-danger'
           })
         }
