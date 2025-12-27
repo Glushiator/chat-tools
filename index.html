@@ -133,6 +133,15 @@
             <b-button type="is-warning" @click="triggerImport">Import</b-button>
             <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
           </div>
+
+          <hr>
+
+          <h3 class="title is-5">App Updates</h3>
+          <b-button type="is-info" @click="checkForUpdates" expanded icon-left="refresh">Check for Updates</b-button>
+          <p v-if="updateStatus" class="mt-2">{{ updateStatus }}</p>
+
+          <hr>
+
           <p v-if="!savedLocations.length" class="has-text-centered">No locations saved yet.</p>
           <b-table v-else :data="savedLocations">
             <b-table-column field="label" label="Label" v-slot="props">
@@ -171,6 +180,7 @@
         darkMode: false,
         status: 'Ready. Click the button above to copy timestamp and location.',
         activeTab: 0,
+        updateStatus: '',
       }
     },
     mounted() {
@@ -282,6 +292,50 @@
           }
         }
         reader.readAsText(file)
+      },
+      async checkForUpdates() {
+        this.updateStatus = 'Checking for updates...'
+
+        if (!('serviceWorker' in navigator)) {
+          this.updateStatus = 'Service worker not supported.'
+          return
+        }
+
+        try {
+          const registration = await navigator.serviceWorker.getRegistration()
+
+          if (!registration) {
+            this.updateStatus = 'No service worker registered.'
+            return
+          }
+
+          // Force check for update
+          await registration.update()
+
+          // Check if there's a new service worker waiting
+          if (registration.waiting) {
+            this.updateStatus = 'Update found! Reloading app...'
+            // Tell the waiting service worker to take over
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+            // Reload the page to activate the new service worker
+            setTimeout(() => window.location.reload(), 500)
+          } else if (registration.installing) {
+            this.updateStatus = 'Update installing...'
+            // Wait for it to finish installing
+            registration.installing.addEventListener('statechange', (e) => {
+              if (e.target.state === 'installed') {
+                this.updateStatus = 'Update ready! Reloading app...'
+                setTimeout(() => window.location.reload(), 500)
+              }
+            })
+          } else {
+            this.updateStatus = 'App is up to date!'
+            setTimeout(() => this.updateStatus = '', 3000)
+          }
+        } catch (error) {
+          console.error('Update check failed:', error)
+          this.updateStatus = 'Update check failed. Please try again.'
+        }
       }
     }
   })
