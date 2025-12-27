@@ -103,9 +103,9 @@ class Future extends Promise {
 ### 3. Location Services
 
 **Key Functions**:
-- `getPosition()` (index.js:140-150): Geolocation wrapper
+- `getPosition()` (index.js:140-147): Geolocation wrapper with proper error rejection
 - `calculateDistance()` (index.js:129-137): Haversine formula implementation
-- `identifyPosition()` (index.js:192-210): Smart location matching
+- `identifyPosition()` (index.js:189-207): Smart location matching
 - `getAddress()` (index.js:106-126): Reverse geocoding with caching
 
 **Smart Location Matching**:
@@ -116,7 +116,7 @@ class Future extends Promise {
 
 ### 4. Weather Integration
 
-**Location**: index.js:153-181
+**Location**: index.js:150-178
 
 **Features**:
 - Open-Meteo API integration
@@ -150,7 +150,7 @@ class Future extends Promise {
 
 **Service Worker Strategy** (service-worker.js):
 - **Cache-first** strategy for all GET requests
-- Precaches 34 assets on install
+- Precaches 33 assets on install
 - Falls back to offline page on navigation failures
 - Automatically cleans old caches on activation
 - Supports manual update checks via SKIP_WAITING message handler
@@ -167,7 +167,7 @@ class Future extends Promise {
 
 ### 7. Manual Update System
 
-**Location**: index.html:378-421
+**Location**: index.html:426-469
 
 **Features**:
 - Manual update check button in Settings tab
@@ -197,40 +197,37 @@ class Future extends Promise {
 
 ### Issues and Bugs
 
-#### 1. Critical: Typo in Error Handler
+#### 1. ~~Critical: Typo in Error Handler~~ (FIXED)
 
-**Location**: index.js:147
+**Status**: The `lotitude` typo was fixed in a previous update.
+
+#### 2. Debug Code in Production
+
+**Location**: index.html:299
 
 ```javascript
-resolve({ coords: { lotitude: 0, longitude: 0 } })
-//                  ^^^^^^^^^ should be "latitude"
+console.error('Geolocation error:', e)
 ```
 
-**Impact**: On geolocation failure, returns malformed position object.
+Debug logging remains for error diagnostics. This is intentional for troubleshooting.
 
-#### 2. ~~Debug Code in Production~~ (FIXED)
+#### 3. ~~Weak Error Handling~~ (FIXED)
 
-**Status**: This issue has been resolved in recent updates.
+**Status**: Geolocation failures now properly reject with an error message and notify the user. The app no longer silently falls back to Null Island (0, 0) coordinates.
 
-#### 3. Weak Error Handling
+#### 4. ~~Race Condition Potential~~ (FIXED)
 
-**Location**: index.js:140-150
+**Status**: The `copyInfo()` method now uses `Promise.allSettled()` for geocoding and weather lookups, providing graceful degradation. If one service fails, the other still works. Geolocation failures abort early.
 
-Position errors resolve to `{0, 0}` (Null Island) without user notification beyond status text. This could lead to incorrect timestamps being copied.
+#### 5. ~~No Input Validation~~ (FIXED)
 
-#### 4. Race Condition Potential
-
-The `copyInfo()` method (index.html:109-131) uses multiple async operations without proper error boundaries. If `getPosition()` fails, weather and location lookups continue unnecessarily.
-
-#### 5. No Input Validation
-
-Importing locations (index.html:164-178) validates array type but not individual location structure. Malformed imports could break the app.
+**Status**: Location imports now validate each entry for required structure (`label` string, `coords.lat` and `coords.lon` numbers). Invalid entries are skipped with user feedback.
 
 ### Security Considerations
 
 1. **HTTPS Required**: Geolocation and clipboard APIs require secure context
 2. **API Dependencies**: Relies on external APIs (OpenStreetMap, Open-Meteo) being available
-3. **XSS Risk**: Status HTML uses `v-html` (index.html:35) - currently safe but risky pattern
+3. **XSS Risk**: Status HTML uses `v-html` (index.html:202) - currently safe but risky pattern
 4. **No Rate Limiting**: Could abuse OpenStreetMap API with rapid requests
 
 ### Performance
@@ -258,7 +255,7 @@ This enables tight coupling between async operations and user feedback.
 
 ### 2. Locale-Aware Timestamps
 
-**Location**: index.js:184-189
+**Location**: index.js:181-186
 
 ```javascript
 new Date().toLocaleString('en-US', {
@@ -275,7 +272,7 @@ HTML template lives in same file as component definition, using `<template>` tag
 
 ### 4. Dark Mode Implementation
 
-**Location**: index.html:25-106
+**Location**: index.html:20-184
 
 Custom CSS overrides for Buefy components in dark mode:
 - Tabs (toggle and boxed styles)
@@ -304,10 +301,10 @@ Or with full address:
 
 ### High Priority
 
-1. **Fix the latitude typo** (index.js:147)
-2. ~~**Remove debug console.log**~~ (FIXED)
-3. **Add location import validation**
-4. **Improve error handling** in `copyInfo()`
+1. ~~**Fix the latitude typo**~~ (FIXED)
+2. ~~**Remove debug console.log**~~ (Kept for diagnostics)
+3. ~~**Add location import validation**~~ (FIXED)
+4. ~~**Improve error handling** in `copyInfo()`~~ (FIXED)
 
 ### Medium Priority
 

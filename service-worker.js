@@ -1,4 +1,6 @@
-const CACHE_NAME = 'geo-timestamp-cache-v3';
+// HELLO WORLD
+
+const CACHE_NAME = 'geo-timestamp-cache-20251227-220735';
 const OFFLINE_URL = './index.html';
 const PRECACHE_ASSETS = [
   './index.html',

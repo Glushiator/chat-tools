@@ -288,39 +288,67 @@
         this.status = text;
       },
       async copyInfo() {
+        const clipboardWriter = new ClipboardWriter()
+
+        // Step 1: Get position
+        this.updateStatus('Getting location...')
+        let pos
         try {
-          const clipboardWriter = new ClipboardWriter()
+          pos = await getPosition(this.updateStatus)
+        } catch (e) {
+          console.error('Geolocation error:', e)
+          await clipboardWriter.cancel()
+          this.updateStatus('Error: Could not get location. Please enable location services.')
+          this.$buefy.toast.open({
+            message: 'Location access denied or unavailable.',
+            type: 'is-danger'
+          })
+          return
+        }
 
-          // Step 1: Get position
-          this.updateStatus('Getting location...')
-          const pos = await getPosition(this.updateStatus)
-          console.log("current position:", pos)
+        // Step 2: Format timestamp (instant)
+        const timestamp = currentTimestamp()
 
-          // Step 2: Format timestamp (instant)
-          const timestamp = currentTimestamp()
+        // Step 3: Run geocoding and weather lookup concurrently with graceful degradation
+        this.updateStatus('Getting address and weather...')
+        let locationString = 'at unknown location'
+        let weatherInfo = 'Weather unavailable'
 
-          // Step 3: Run geocoding and weather lookup concurrently
-          this.updateStatus('Getting address and weather...')
-          const [locationString, weatherInfo] = await Promise.all([
+        try {
+          const results = await Promise.allSettled([
             identifyPosition(pos, this.savedLocations, this.updateStatus),
             getWeather(pos)
           ])
 
-          // Step 4: Combine and copy
-          this.updateStatus('Copying to clipboard...')
-          const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
-          await clipboardWriter.writeText(finalStr)
+          if (results[0].status === 'fulfilled') {
+            locationString = results[0].value
+          } else {
+            console.error('Location lookup failed:', results[0].reason)
+          }
 
-          // Success
+          if (results[1].status === 'fulfilled') {
+            weatherInfo = results[1].value
+          } else {
+            console.error('Weather lookup failed:', results[1].reason)
+          }
+        } catch (e) {
+          console.error('Error fetching location/weather:', e)
+        }
+
+        // Step 4: Combine and copy
+        this.updateStatus('Copying to clipboard...')
+        const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
+
+        try {
+          await clipboardWriter.writeText(finalStr)
           this.updateStatus('Copied.')
           this.$buefy.toast.open({
             message: finalStr,
             type: 'is-success'
           })
-        }
-        catch (e) {
-          console.error('Error during copy operation:', e)
-          this.updateStatus('Error: Could not copy.')
+        } catch (e) {
+          console.error('Clipboard error:', e)
+          this.updateStatus('Error: Could not copy to clipboard.')
           this.$buefy.toast.open({
             message: 'Error: Could not copy to clipboard.',
             type: 'is-danger'
@@ -362,18 +390,38 @@
         reader.onload = evt => {
           try {
             const imported = JSON.parse(evt.target.result)
-            if (Array.isArray(imported)) {
-              this.savedLocations = imported
-              this.saveToStore()
-              this.status = 'Locations imported!'
-            } else {
-              this.status = 'Import failed: Invalid format.'
+            if (!Array.isArray(imported)) {
+              this.status = 'Import failed: Expected an array.'
+              return
             }
+            // Validate each location has required structure
+            const validLocations = []
+            for (const loc of imported) {
+              if (typeof loc.label === 'string' && loc.label.trim() &&
+                  loc.coords && typeof loc.coords.lat === 'number' &&
+                  typeof loc.coords.lon === 'number') {
+                validLocations.push({
+                  label: loc.label.trim(),
+                  coords: { lat: loc.coords.lat, lon: loc.coords.lon }
+                })
+              }
+            }
+            if (validLocations.length === 0) {
+              this.status = 'Import failed: No valid locations found.'
+              return
+            }
+            this.savedLocations = validLocations
+            this.saveToStore()
+            const skipped = imported.length - validLocations.length
+            this.status = skipped > 0
+              ? `Imported ${validLocations.length} locations (${skipped} invalid entries skipped).`
+              : `Imported ${validLocations.length} locations!`
           } catch {
             this.status = 'Import failed: Not valid JSON.'
           }
         }
         reader.readAsText(file)
+        e.target.value = ''
       },
       async checkForUpdates() {
         this.updateStatus = 'Checking for updates...'

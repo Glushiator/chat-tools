@@ -138,12 +138,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 
 async function getPosition(updateStatus) {
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(async pos => {
-      resolve(pos)
-    }, () => {
-      resolve({ coords: { latitude: 0, longitude: 0 } })
-    })
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(pos),
+      error => reject(new Error(`Geolocation failed: ${error.message}`))
+    )
   })
 }
 
