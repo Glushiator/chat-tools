@@ -37,10 +37,17 @@ chat-tools/
 
 Single-page app with one Vue component (`tools-app`) containing all UI logic. The architecture follows a simple pattern:
 
-1. **UI Layer** (index.html): Vue template with Buefy components
+1. **UI Layer** (index.html): Vue template with Buefy components and tabbed interface
 2. **Logic Layer** (index.js): Utility functions and custom classes
 3. **Storage Layer**: LocalStorage for saved locations
 4. **Service Layer**: External API calls for geocoding and weather
+
+### User Interface
+
+The app features a **tabbed interface** with two main sections:
+
+1. **Timestamp Tab**: Primary interface for generating geo-timestamps
+2. **Settings Tab**: Manages saved locations, data import/export, and app updates
 
 ## Core Features Analysis
 
@@ -146,21 +153,47 @@ class Future extends Promise {
 - Precaches 34 assets on install
 - Falls back to offline page on navigation failures
 - Automatically cleans old caches on activation
+- Supports manual update checks via SKIP_WAITING message handler
+
+**Cache Versioning**:
+- Current version: `geo-timestamp-cache-v3`
+- Automatic cleanup of old caches on service worker activation
+- Manual update checking available in Settings tab
 
 **Precached Assets**:
 - App files (HTML, JS, manifest, icon)
 - All UI library files (Buefy, Vue)
 - All icon fonts (MDI, Font Awesome)
 
+### 7. Manual Update System
+
+**Location**: index.html:378-421
+
+**Features**:
+- Manual update check button in Settings tab
+- Detects waiting or installing service workers
+- Automatic page reload after update
+- User-friendly status messages
+
+**Update Flow**:
+1. User clicks "Check for Updates" button
+2. Forces service worker update check
+3. If update found, sends SKIP_WAITING message
+4. Reloads page to activate new version
+5. Displays status feedback throughout process
+
 ## Code Quality Analysis
 
 ### Strengths
 
 1. **Privacy-First Design**: All data local, minimal external API usage
-2. **Offline Capable**: Comprehensive service worker implementation
+2. **Offline Capable**: Comprehensive service worker implementation with manual update support
 3. **Smart Caching**: Both geocoding and weather have intelligent caching
 4. **Clean Separation**: Utilities separated from Vue component logic
-5. **User-Friendly**: One-click operation, clear feedback
+5. **User-Friendly**: One-click operation, clear feedback, intuitive tabbed interface
+6. **Performance Optimized**: Concurrent API fetching for geocoding and weather data
+7. **Comprehensive Dark Mode**: Complete dark mode support with proper contrast and styling
+8. **Self-Updating**: Manual update check feature for PWA maintenance
 
 ### Issues and Bugs
 
@@ -175,15 +208,9 @@ resolve({ coords: { lotitude: 0, longitude: 0 } })
 
 **Impact**: On geolocation failure, returns malformed position object.
 
-#### 2. Debug Code in Production
+#### 2. ~~Debug Code in Production~~ (FIXED)
 
-**Location**: index.html:52
-
-```javascript
-{{ console.log('props', props) }}
-```
-
-**Impact**: Console spam and exposed template syntax in DOM.
+**Status**: This issue has been resolved in recent updates.
 
 #### 3. Weak Error Handling
 
@@ -212,6 +239,7 @@ Importing locations (index.html:164-178) validates array type but not individual
 2. **Efficient Caching**: Weather (1hr), geocoding (200m radius), service worker
 3. **No Build Step**: Direct browser execution
 4. **Mobile-Optimized**: Touch-friendly, responsive design
+5. **Concurrent Data Fetching**: Geocoding and weather requests execute in parallel, reducing overall load time
 
 ## Notable Implementation Patterns
 
@@ -243,7 +271,20 @@ Produces: `Fri, Jul 4, 2025, 3:32 PM`
 
 ### 3. Template Co-location
 
-HTML template lives in same file as component definition (index.html:26-67), using `<template>` tag. Simple but limits code reuse.
+HTML template lives in same file as component definition, using `<template>` tag. Simple but limits code reuse.
+
+### 4. Dark Mode Implementation
+
+**Location**: index.html:25-106
+
+Custom CSS overrides for Buefy components in dark mode:
+- Tabs (toggle and boxed styles)
+- Tables (headers, rows, hover states)
+- Buttons (all color variants)
+- Text and background colors
+- Form elements
+
+**Pattern**: Uses `.has-background-dark` parent selector to scope all dark mode styles, providing comprehensive coverage without JavaScript theme switching logic.
 
 ## Output Format
 
@@ -264,7 +305,7 @@ Or with full address:
 ### High Priority
 
 1. **Fix the latitude typo** (index.js:147)
-2. **Remove debug console.log** (index.html:52)
+2. ~~**Remove debug console.log**~~ (FIXED)
 3. **Add location import validation**
 4. **Improve error handling** in `copyInfo()`
 
@@ -281,8 +322,9 @@ Or with full address:
 10. **Multiple timestamp formats** (ISO 8601, Unix, etc.)
 11. **Location sharing** via URL
 12. **History of generated timestamps**
-13. **Dark mode auto-detection** (prefers-color-scheme)
+13. **Dark mode auto-detection** (prefers-color-scheme) - Manual toggle implemented
 14. **Internationalization** (i18n support)
+15. **Automatic update notifications** (currently requires manual check)
 
 ## Browser Compatibility
 
@@ -295,8 +337,37 @@ Or with full address:
 
 **Tested On**: Modern Chrome, Firefox, Safari, Edge (mobile and desktop)
 
+## Recent Improvements
+
+### Version History (Last 5 commits)
+
+1. **Service Worker Cache Management** (v3)
+   - Updated cache name to force refresh of cached assets
+   - Improved cache cleanup on activation
+
+2. **Dark Mode Enhancements**
+   - Complete dark mode styling for Settings tab
+   - Added focus and active states for tabs
+   - Improved table and button visibility
+   - Better contrast throughout the interface
+
+3. **Manual Update Feature**
+   - Added "Check for Updates" button in Settings
+   - Automatic page reload after update detection
+   - User feedback during update process
+   - SKIP_WAITING message handler in service worker
+
+4. **Performance Optimization**
+   - Geocoding and weather fetching now run concurrently
+   - Reduced overall timestamp generation time
+
+5. **UI Improvements**
+   - Tabbed interface (Timestamp + Settings)
+   - Better organization of app features
+   - Improved visual feedback and status messages
+
 ## Conclusion
 
-This is a well-executed single-purpose PWA with strong privacy principles and solid offline functionality. The code is clean and maintainable, though it would benefit from fixing the identified bugs and adding more robust error handling. The custom `Future` and `ClipboardWriter` implementations show thoughtful solutions to browser API limitations.
+This is a well-executed single-purpose PWA with strong privacy principles and solid offline functionality. Recent updates have significantly improved the user experience with comprehensive dark mode support, a tabbed interface, manual update checking, and performance optimizations. The code is clean and maintainable, though it would benefit from fixing the remaining identified bugs (particularly the latitude typo) and adding more robust error handling. The custom `Future` and `ClipboardWriter` implementations show thoughtful solutions to browser API limitations.
 
-The app successfully delivers on its core promise: quick, privacy-respecting geo-timestamps with minimal friction.
+The app successfully delivers on its core promise: quick, privacy-respecting geo-timestamps with minimal friction, now with an even more polished and user-friendly interface.
