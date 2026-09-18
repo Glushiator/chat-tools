@@ -26,10 +26,16 @@ geolocation, clipboard and service workers all need a secure context, and
 ```bash
 git clone https://github.com/Glushiator/chat-tools.git
 cd chat-tools
-python3 -m http.server 8000   # then visit http://localhost:8000
+git config core.hooksPath hooks   # one-time: enables the cache-busting hook
+python3 -m http.server 8000       # then visit http://localhost:8000
 ```
 
 `http://localhost` counts as a secure context, so everything works there.
+
+**Do not skip the `core.hooksPath` line.** `hooks/pre-commit` is what keeps
+`CACHE_NAME` moving; git deliberately never enables a cloned repo's hooks by
+itself, and without it every commit ships a service worker that returning
+clients treat as unchanged.
 
 **Tech Stack:**
 - Vue 3 (production build via CDN)
@@ -151,7 +157,7 @@ PWA offline support.
 - **Fallback:** index.html on failed navigation; other failures rethrow
 
 **Cache name:** `geo-timestamp-cache-<timestamp>`, rewritten automatically by
-the `pre-commit` hook. Do not edit it by hand.
+`hooks/pre-commit`. Do not edit it by hand.
 
 **Deliberately no `skipWaiting()` in `install`.** A new worker parks in
 `waiting` so the Settings tab can detect it. Promotion happens only when the
@@ -605,7 +611,7 @@ through `normalizeLocation()`, so any field it does not copy is silently dropped
 ---
 
 ### Update Cache Version (Force Refresh)
-**Handled for you.** `.git/hooks/pre-commit` rewrites `CACHE_NAME` to
+**Handled for you.** `hooks/pre-commit` rewrites `CACHE_NAME` to
 `geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)` whenever a commit has staged files,
 and re-stages `service-worker.js`:
 
@@ -615,9 +621,18 @@ perl -i -pe "s/^const CACHE_NAME = '[^']+';/const CACHE_NAME = '${NEW_VERSION}';
 git add "$SERVICE_WORKER"
 ```
 
-**Caveat:** git hooks are not version-controlled. After a fresh clone the hook is
-absent and nothing busts the cache, so copy it across (or set `core.hooksPath` to
-a tracked directory) before committing.
+The hook lives in the repo rather than `.git/hooks/` so it survives a clone, and
+it refuses to fail quietly: if `service-worker.js` has no recognisable
+`CACHE_NAME` line it warns on stderr instead of committing an unbumped worker.
+
+**One-time setup per clone:** `git config core.hooksPath hooks`. Git will not
+enable a repository's own hooks automatically, and there is no portable way to
+make it - running code straight from a clone is a security hole. Verify with:
+
+```bash
+git config core.hooksPath                    # → hooks
+git show HEAD:service-worker.js | head -1    # → a fresh timestamp after a commit
+```
 
 **What happens on the client:** the new worker installs and waits; the Settings
 tab's "Check for Updates" promotes it and reloads. Old caches are deleted during
@@ -737,6 +752,8 @@ chat-tools/
 │   └── Cache-first strategy, ignoreSearch
 ├── manifest.json           # PWA metadata (15 lines)
 ├── icon-256.png            # App icon
+├── hooks/
+│   └── pre-commit          # Bumps CACHE_NAME; enable with core.hooksPath
 ├── README.md               # User documentation
 ├── CLAUDE.md               # Code analysis / architecture notes
 ├── DEVELOPER_GUIDE.md      # This file
@@ -769,7 +786,7 @@ chat-tools/
 - No JSX/SFC
 - No tree-shaking
 - CDN dependencies (larger initial load)
-- Cache busting depends on a git hook that the repo cannot ship
+- Cache busting depends on a git hook each clone must enable once
 
 **When to migrate:** If project grows beyond ~1000 LOC or needs npm packages.
 
@@ -932,8 +949,8 @@ window.fetch = (u, o) => /nominatim|open-meteo/.test(u) ? Promise.reject(new Err
 2. **Create feature branch:** `git checkout -b feature/your-feature`
 3. **Make changes** (test in multiple browsers)
 4. **Test offline mode** (service worker + airplane mode)
-5. **Confirm the pre-commit hook is installed** - without it `CACHE_NAME` never
-   changes and clients keep the old assets
+5. **Confirm `git config core.hooksPath` is `hooks`** - without it `CACHE_NAME`
+   never changes and clients keep the old assets
 6. **Update docs** (this file + CLAUDE.md + README if user-facing)
 7. **Commit:** Clear message explaining "why" not just "what"
 8. **Push and create PR**
@@ -962,14 +979,15 @@ recurs after adding a font, confirm the precache entry has **no** query string.
 
 ### "Service worker not updating"
 **Cause:** `CACHE_NAME` unchanged, so the worker byte-compares identical -
-usually because the pre-commit hook is missing after a fresh clone.
-**Fix:** install the hook and re-commit, or DevTools → Application →
-Service Workers → "Update on reload".
+usually because `core.hooksPath` was never set in this clone.
+**Fix:** `git config core.hooksPath hooks` and re-commit, or DevTools →
+Application → Service Workers → "Update on reload".
 
 ### "Check for Updates says 'up to date' but I deployed"
 **Cause:** the deployed `service-worker.js` is byte-identical. Check that the
-pre-commit hook actually ran (`git show HEAD:service-worker.js | head -1`) and
-that the server is not serving a stale worker script.
+hook actually ran (`git show HEAD:service-worker.js | head -1` should show a
+fresh timestamp), that `core.hooksPath` is set, and that the server is not
+serving a stale worker script.
 
 ### "Address shows as (lat, lon)"
 **Cause:** Nominatim request failed, timed out, or the app is offline.

@@ -1,0 +1,53 @@
+#!/bin/bash
+
+if [ "${DEBUG-}" ]
+then set -x
+fi
+
+# Pre-commit hook to auto-update service worker cache version
+# Updates CACHE_NAME in service-worker.js with a timestamp-based version
+#
+# This hook is version-controlled so a fresh clone keeps cache busting.
+# Git will not use it until each clone opts in once:
+#
+#     git config core.hooksPath hooks
+
+SERVICE_WORKER="service-worker.js"
+
+# Check if service-worker.js exists
+if [ ! -f "$SERVICE_WORKER" ]; then
+    exit 0
+fi
+
+# Check if any files (other than service-worker.js itself) are staged
+STAGED_FILES=$(git diff --cached --name-only)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+# A silently missed substitution is the exact failure this hook exists to
+# prevent, so refuse to be quiet about an unrecognised CACHE_NAME line.
+if ! grep -q "^const CACHE_NAME = '[^']\+';" "$SERVICE_WORKER"; then
+    echo "pre-commit: no recognisable CACHE_NAME line in $SERVICE_WORKER;" >&2
+    echo "pre-commit: cache version NOT updated - clients may keep stale assets." >&2
+    exit 0
+fi
+
+# Generate new cache version using timestamp
+NEW_VERSION="geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)"
+
+# Update the CACHE_NAME in service-worker.js using perl for reliable replacement
+perl -i -pe "s/^const CACHE_NAME = '[^']+';/const CACHE_NAME = '${NEW_VERSION}';/" "$SERVICE_WORKER"
+
+# Check if the file was actually modified
+if git diff --quiet "$SERVICE_WORKER"; then
+    exit 0
+fi
+
+# Add the updated service-worker.js to the commit
+git add "$SERVICE_WORKER"
+
+echo "Updated service worker cache version to: $NEW_VERSION"
+
+exit 0

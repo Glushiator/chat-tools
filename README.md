@@ -151,9 +151,12 @@ This project is open source (Unlicense) and contributions are welcome!
 
 To contribute:
 1. Fork the repository
-2. Make your changes
-3. Test thoroughly (especially on mobile devices)
-4. Submit a pull request
+2. Run `git config core.hooksPath hooks` once — this enables the pre-commit hook
+   that bumps the service worker's cache version. Without it, returning users
+   keep the old files.
+3. Make your changes
+4. Test thoroughly (especially on mobile devices)
+5. Submit a pull request
 
 Areas that could use improvement:
 - Add more weather code mappings (see `weatherCodeToString` in `index.js`)

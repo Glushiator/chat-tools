@@ -185,8 +185,9 @@ detail. If a saved label is wanted, that is what the plain button is for.
 
 **Cache Versioning**:
 - Current version: `geo-timestamp-cache-20260918-120000`
-- **Auto-bumped on commit** by `.git/hooks/pre-commit`, which rewrites it to
-  `geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)` whenever anything is staged
+- **Auto-bumped on commit** by the tracked `hooks/pre-commit`, which rewrites it
+  to `geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)` whenever anything is staged.
+  Each clone must opt in once with `git config core.hooksPath hooks`.
 - Automatic cleanup of old caches on service worker activation
 - The Settings tab asks the controlling worker for its version over a
   `MessageChannel`, falling back to scanning `caches.keys()`
@@ -223,9 +224,10 @@ detail. If a saved label is wanted, that is what the plain button is for.
 1. **In-memory caches only** - `geocodeCache` and `weatherCache` are module-scope
    and reset on every page load. Persisting them would help a walk resumed after
    a reload.
-2. **The cache-version hook is not version-controlled** - `.git/hooks/pre-commit`
-   bumps `CACHE_NAME` automatically, but hooks live outside the repo, so a fresh
-   clone has no such protection and stale assets would be served silently.
+2. **The hook needs a one-time opt-in per clone** - the hook itself is tracked
+   in `hooks/`, but git never enables hooks automatically (running repo code on
+   clone would be a security hole). Until `core.hooksPath` is set, `CACHE_NAME`
+   stays frozen and stale assets are served silently.
 3. **No `User-Agent` for Nominatim** - browsers forbid setting it, so the 1 req/s
    throttle is the only compliance lever available.
 4. **Clipboard fallback runs outside the user gesture** - on browsers without
@@ -326,10 +328,8 @@ Walk mode always resolves a street address and appends the exact fix:
 
 1. **Persist the geocode/weather caches** to localStorage so a reload mid-walk
    does not discard them
-2. **Track the pre-commit hook in the repo** (e.g. a `hooks/` directory plus
-   `core.hooksPath`) so cache busting survives a fresh clone
-3. **Add retry logic** for API failures
-4. **Automate the test harness** (see DEVELOPER_GUIDE.md) in CI
+2. **Add retry logic** for API failures
+3. **Automate the test harness** (see DEVELOPER_GUIDE.md) in CI
 
 ### Enhancement Ideas
 
