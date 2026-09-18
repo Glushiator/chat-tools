@@ -10,7 +10,7 @@ fi
 # This hook is version-controlled so a fresh clone keeps cache busting.
 # Git will not use it until each clone opts in once:
 #
-#     git config core.hooksPath hooks
+#     make activate-hooks     (or: git config core.hooksPath hooks)
 
 SERVICE_WORKER="service-worker.js"
 

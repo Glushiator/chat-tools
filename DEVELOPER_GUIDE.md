@@ -26,16 +26,26 @@ geolocation, clipboard and service workers all need a secure context, and
 ```bash
 git clone https://github.com/Glushiator/chat-tools.git
 cd chat-tools
-git config core.hooksPath hooks   # one-time: enables the cache-busting hook
-python3 -m http.server 8000       # then visit http://localhost:8000
+make activate-hooks   # one-time: enables the cache-busting pre-commit hook
+make serve            # then visit http://localhost:8000
 ```
 
 `http://localhost` counts as a secure context, so everything works there.
 
-**Do not skip the `core.hooksPath` line.** `hooks/pre-commit` is what keeps
+**Do not skip `make activate-hooks`.** `hooks/pre-commit` is what keeps
 `CACHE_NAME` moving; git deliberately never enables a cloned repo's hooks by
 itself, and without it every commit ships a service worker that returning
 clients treat as unchanged.
+
+### Make targets
+
+| Target | What it does |
+|---|---|
+| `make` | Lists targets and says whether the hook is active |
+| `make activate-hooks` | Sets `core.hooksPath` to the tracked `hooks/` dir |
+| `make verify-hooks` | Same check, but exits non-zero - for CI or a deploy script |
+| `make serve` | `python3 -m http.server` on port 8000 (override with `PORT=`) |
+| `make check` | Syntax-checks index.js, service-worker.js and the inline scripts |
 
 **Tech Stack:**
 - Vue 3 (production build via CDN)
@@ -625,12 +635,12 @@ The hook lives in the repo rather than `.git/hooks/` so it survives a clone, and
 it refuses to fail quietly: if `service-worker.js` has no recognisable
 `CACHE_NAME` line it warns on stderr instead of committing an unbumped worker.
 
-**One-time setup per clone:** `git config core.hooksPath hooks`. Git will not
-enable a repository's own hooks automatically, and there is no portable way to
-make it - running code straight from a clone is a security hole. Verify with:
+**One-time setup per clone:** `make activate-hooks`. Git will not enable a
+repository's own hooks automatically, and there is no portable way to make it -
+running code straight from a clone is a security hole. Verify with:
 
 ```bash
-git config core.hooksPath                    # → hooks
+make verify-hooks                            # → hooks: ok, or exits 1
 git show HEAD:service-worker.js | head -1    # → a fresh timestamp after a commit
 ```
 
@@ -752,8 +762,9 @@ chat-tools/
 │   └── Cache-first strategy, ignoreSearch
 ├── manifest.json           # PWA metadata (15 lines)
 ├── icon-256.png            # App icon
+├── Makefile                # activate-hooks, verify-hooks, serve, check
 ├── hooks/
-│   └── pre-commit          # Bumps CACHE_NAME; enable with core.hooksPath
+│   └── pre-commit          # Bumps CACHE_NAME; enable with make activate-hooks
 ├── README.md               # User documentation
 ├── CLAUDE.md               # Code analysis / architecture notes
 ├── DEVELOPER_GUIDE.md      # This file
@@ -949,8 +960,8 @@ window.fetch = (u, o) => /nominatim|open-meteo/.test(u) ? Promise.reject(new Err
 2. **Create feature branch:** `git checkout -b feature/your-feature`
 3. **Make changes** (test in multiple browsers)
 4. **Test offline mode** (service worker + airplane mode)
-5. **Confirm `git config core.hooksPath` is `hooks`** - without it `CACHE_NAME`
-   never changes and clients keep the old assets
+5. **Run `make verify-hooks`** - without the hook `CACHE_NAME` never changes and
+   clients keep the old assets
 6. **Update docs** (this file + CLAUDE.md + README if user-facing)
 7. **Commit:** Clear message explaining "why" not just "what"
 8. **Push and create PR**
@@ -979,15 +990,15 @@ recurs after adding a font, confirm the precache entry has **no** query string.
 
 ### "Service worker not updating"
 **Cause:** `CACHE_NAME` unchanged, so the worker byte-compares identical -
-usually because `core.hooksPath` was never set in this clone.
-**Fix:** `git config core.hooksPath hooks` and re-commit, or DevTools →
-Application → Service Workers → "Update on reload".
+usually because the hook was never activated in this clone.
+**Fix:** `make activate-hooks` and re-commit, or DevTools → Application →
+Service Workers → "Update on reload".
 
 ### "Check for Updates says 'up to date' but I deployed"
-**Cause:** the deployed `service-worker.js` is byte-identical. Check that the
-hook actually ran (`git show HEAD:service-worker.js | head -1` should show a
-fresh timestamp), that `core.hooksPath` is set, and that the server is not
-serving a stale worker script.
+**Cause:** the deployed `service-worker.js` is byte-identical. Run
+`make verify-hooks`, check the hook actually ran
+(`git show HEAD:service-worker.js | head -1` should show a fresh timestamp),
+and confirm the server is not serving a stale worker script.
 
 ### "Address shows as (lat, lon)"
 **Cause:** Nominatim request failed, timed out, or the app is offline.
