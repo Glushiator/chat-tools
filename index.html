@@ -17,6 +17,10 @@
     .hidden { visibility: hidden; }
     pre { white-space: pre-wrap; }
 
+    /* Global status line, shown above the tabs */
+    .status-box { margin-bottom: 1rem; padding: 0.75rem 1rem; }
+    .status-line { margin: 0; white-space: pre-wrap; word-break: break-word; }
+
     /* Dark mode styles */
     .has-background-dark {
       background-color: #363636 !important;
@@ -181,47 +185,55 @@
     .has-background-dark p {
       color: #f5f5f5;
     }
+    .has-background-dark .has-text-grey {
+      color: #b5b5b5 !important;
+    }
+    .has-background-dark .switch input[type="checkbox"] + .check {
+      border-color: #7a7a7a;
+    }
   </style>
 </head>
 <body>
-  <div id="app">
+  <div id="app" class="hidden">
     <tools-app></tools-app>
   </div>
 
   <template id="tools-app-template">
-    <section class="box">
-      <b-field label="Dark mode" horizontal>
-        <b-switch v-model="darkMode"></b-switch>
-      </b-field>
+    <section class="box status-box">
+      <p class="status-line" v-text="status"></p>
     </section>
 
     <b-tabs v-model="activeTab" type="is-boxed" expanded>
-      <b-tab-item label="Copy Location" icon="map-marker">
+      <b-tab-item label="Copy" icon="content-copy">
         <section class="box">
-          <b-button type="is-primary" @click="copyInfo" expanded label="Copy Timestamp &amp; Location"></b-button>
-          <p class="mt-2" v-html="status"></p>
+          <b-button type="is-primary" @click="copyInfo(false)" expanded
+            :loading="busy" :disabled="busy"
+            label="Copy Timestamp &amp; Location"></b-button>
+          <b-button type="is-link" class="mt-2" @click="copyInfo(true)" expanded
+            :loading="busy" :disabled="busy"
+            label="Copy Walk Position (10 m)"></b-button>
+          <p class="mt-3 has-text-grey is-size-7">
+            Walk mode always reverse-geocodes to a street address, ignoring saved
+            locations. It re-geocodes whenever you move more than 10 m and appends
+            the exact coordinates.
+          </p>
         </section>
       </b-tab-item>
 
-      <b-tab-item label="Settings" icon="cog">
+      <b-tab-item label="Locations" icon="map-marker">
         <section class="box">
-          <h3 class="title is-5">App Updates</h3>
-          <b-button type="is-info" @click="checkForUpdates" expanded icon-left="refresh">Check for Updates</b-button>
-          <p v-if="appUpdateStatus" class="mt-2">{{ appUpdateStatus }}</p>
-          <p class="mt-2 has-text-grey is-size-7">Version: {{ cacheVersion }}</p>
-
-          <hr>
-
-          <h3 class="title is-5">Manage Saved Locations</h3>
+          <h3 class="title is-5">Saved Locations</h3>
           <b-field label="Label">
-            <b-input v-model="label" placeholder="Enter label"></b-input>
+            <b-input v-model="label" placeholder="Enter label" @keyup.enter="saveLocation"></b-input>
           </b-field>
-          <b-button type="is-success" @click="saveLocation" expanded class="mb-2">Save Current Location</b-button>
+          <b-button type="is-success" @click="saveLocation" expanded class="mb-2"
+            :loading="savingLocation" :disabled="savingLocation">Save Current Location</b-button>
           <div class="buttons">
             <b-button type="is-link" @click="exportLocations">Export</b-button>
             <b-button type="is-warning" @click="triggerImport">Import</b-button>
             <input type="file" ref="importFile" @change="handleImport" accept="application/json" style="display:none">
           </div>
+          <p class="has-text-grey is-size-7">Import merges into the list; entries with the same label are updated.</p>
 
           <hr>
 
@@ -243,6 +255,22 @@
           </b-table>
         </section>
       </b-tab-item>
+
+      <b-tab-item label="Settings" icon="cog">
+        <section class="box">
+          <h3 class="title is-5">Appearance</h3>
+          <b-field label="Dark mode" horizontal>
+            <b-switch v-model="darkMode"></b-switch>
+          </b-field>
+
+          <hr>
+
+          <h3 class="title is-5">App Updates</h3>
+          <b-button type="is-info" @click="checkForUpdates" expanded icon-left="refresh"
+            :loading="checkingUpdate" :disabled="checkingUpdate">Check for Updates</b-button>
+          <p class="mt-2 has-text-grey is-size-7">Version: {{ cacheVersion }}</p>
+        </section>
+      </b-tab-item>
     </b-tabs>
   </template>
 
@@ -252,6 +280,41 @@
   <script>
 
   const STORAGE_KEY = 'savedLocations'
+  const READY_STATUS = 'Ready. Use the Copy tab to put a geo-timestamp on the clipboard.'
+
+  // Ask the controlling worker what it actually runs, rather than guessing from
+  // caches.keys() - during an update two caches coexist and find() picks either.
+  function askServiceWorkerVersion(timeout = 2000) {
+    return new Promise((resolve) => {
+      const worker = navigator.serviceWorker && navigator.serviceWorker.controller
+      if (!worker) {
+        resolve(null)
+        return
+      }
+      const channel = new MessageChannel()
+      const timer = setTimeout(() => resolve(null), timeout)
+      channel.port1.onmessage = (event) => {
+        clearTimeout(timer)
+        resolve(event.data && event.data.version || null)
+      }
+      worker.postMessage({ type: 'GET_VERSION' }, [channel.port2])
+    })
+  }
+
+  // Resolves once the worker has finished installing and is ready to be promoted.
+  function whenInstalled(worker) {
+    return new Promise((resolve, reject) => {
+      const settle = () => {
+        if (worker.state === 'installed' || worker.state === 'activated' || worker.state === 'activating')
+          resolve()
+        else if (worker.state === 'redundant')
+          reject(new Error('The update failed to install.'))
+      }
+      settle()
+      worker.addEventListener('statechange', settle)
+    })
+  }
+
   const app = Vue.createApp({})
   app.use(Buefy.default)
   app.component('tools-app', {
@@ -261,10 +324,12 @@
         label: '',
         savedLocations: [],
         darkMode: false,
-        status: 'Ready. Click the button above to copy timestamp and location.',
+        status: READY_STATUS,
         activeTab: 0,
-        appUpdateStatus: '',
         cacheVersion: 'unknown',
+        busy: false,
+        savingLocation: false,
+        checkingUpdate: false,
       }
     },
     mounted() {
@@ -282,10 +347,26 @@
     },
     methods: {
       loadSaved() {
-        this.savedLocations = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []
+        let stored = null
+        try {
+          stored = JSON.parse(localStorage.getItem(STORAGE_KEY))
+        } catch (e) {
+          // A corrupt value used to throw out of mounted() and leave the whole
+          // app half-initialised.
+          console.error('Saved locations are unreadable:', e)
+          this.status = 'Saved locations could not be read and were ignored.'
+        }
+        this.savedLocations = Array.isArray(stored)
+          ? stored.map(normalizeLocation).filter(Boolean)
+          : []
       },
       async loadCacheVersion() {
         try {
+          const version = await askServiceWorkerVersion()
+          if (version) {
+            this.cacheVersion = version
+            return
+          }
           const keys = await caches.keys()
           const cacheKey = keys.find(k => k.startsWith('geo-timestamp-cache-'))
           if (cacheKey) {
@@ -301,36 +382,40 @@
       updateStatus(text) {
         this.status = text;
       },
-      async copyInfo() {
+      async copyInfo(walkMode = false) {
+        if (this.busy) return
+        this.busy = true
         const clipboardWriter = new ClipboardWriter()
-
-        // Step 1: Get position
-        this.updateStatus('Getting location...')
-        let pos
         try {
-          pos = await getPosition(this.updateStatus)
-        } catch (e) {
-          console.error('Geolocation error:', e)
-          await clipboardWriter.cancel()
-          this.updateStatus('Error: Could not get location. Please enable location services.')
-          this.$buefy.toast.open({
-            message: 'Location access denied or unavailable.',
-            type: 'is-danger'
-          })
-          return
-        }
+          // Step 1: Get position
+          this.updateStatus(walkMode ? 'Getting precise location...' : 'Getting location...')
+          let pos
+          try {
+            pos = await getPosition(walkMode ? PRECISE_POSITION_OPTIONS : POSITION_OPTIONS)
+          } catch (e) {
+            console.error('Geolocation error:', e)
+            await clipboardWriter.cancel()
+            this.updateStatus('Error: Could not get location. Please enable location services.')
+            this.$buefy.toast.open({
+              message: 'Location access denied or unavailable.',
+              type: 'is-danger'
+            })
+            return
+          }
 
-        // Step 2: Format timestamp (instant)
-        const timestamp = currentTimestamp()
+          // Step 2: Format timestamp (instant)
+          const timestamp = currentTimestamp()
 
-        // Step 3: Run geocoding and weather lookup concurrently with graceful degradation
-        this.updateStatus('Getting address and weather...')
-        let locationString = 'at unknown location'
-        let weatherInfo = 'Weather unavailable'
+          // Step 3: Run geocoding and weather lookup concurrently with graceful degradation
+          this.updateStatus('Getting address and weather...')
+          let locationString = 'at unknown location'
+          let weatherInfo = 'Weather unavailable'
 
-        try {
+          const lookup = walkMode
+            ? { radius: WALK_CACHE_RADIUS, useSavedLocations: false }
+            : { radius: GEOCODE_CACHE_RADIUS, useSavedLocations: true }
           const results = await Promise.allSettled([
-            identifyPosition(pos, this.savedLocations, this.updateStatus),
+            identifyPosition(pos, this.savedLocations, this.updateStatus, lookup),
             getWeather(pos)
           ])
 
@@ -345,45 +430,74 @@
           } else {
             console.error('Weather lookup failed:', results[1].reason)
           }
-        } catch (e) {
-          console.error('Error fetching location/weather:', e)
-        }
 
-        // Step 4: Combine and copy
-        this.updateStatus('Copying to clipboard...')
-        const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
+          // Walk mode keeps the exact fix alongside whatever the address or the
+          // saved label resolved to.
+          if (walkMode) {
+            locationString += ` ${formatCoords(pos.coords.latitude, pos.coords.longitude)}`
+          }
 
-        try {
-          await clipboardWriter.writeText(finalStr)
-          this.updateStatus('Copied.')
-          this.$buefy.toast.open({
-            message: finalStr,
-            type: 'is-success'
-          })
+          // Step 4: Combine and copy
+          this.updateStatus('Copying to clipboard...')
+          const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
+
+          try {
+            await clipboardWriter.writeText(finalStr)
+            this.updateStatus(`Copied: ${finalStr}`)
+            this.$buefy.toast.open({
+              message: finalStr,
+              type: 'is-success'
+            })
+          } catch (e) {
+            console.error('Clipboard error:', e)
+            this.updateStatus('Error: Could not copy to clipboard.')
+            this.$buefy.toast.open({
+              message: 'Error: Could not copy to clipboard.',
+              type: 'is-danger'
+            })
+          }
         } catch (e) {
-          console.error('Clipboard error:', e)
-          this.updateStatus('Error: Could not copy to clipboard.')
-          this.$buefy.toast.open({
-            message: 'Error: Could not copy to clipboard.',
-            type: 'is-danger'
-          })
+          // Never leave the clipboard write pending on an unexpected failure.
+          console.error('Copy failed:', e)
+          await clipboardWriter.cancel()
+          this.updateStatus(`Error: ${e.message}`)
+        } finally {
+          this.busy = false
         }
       },
-      saveLocation() {
-        if (!this.label.trim()) return
-        navigator.geolocation.getCurrentPosition(pos => {
-          this.savedLocations.push({ label: this.label.trim(), coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } })
+      async saveLocation() {
+        if (this.savingLocation) return
+        const label = this.label.trim()
+        if (!label) {
+          this.updateStatus('Enter a label before saving a location.')
+          return
+        }
+        if (this.savedLocations.some(loc => loc.label.toLowerCase() === label.toLowerCase())) {
+          this.updateStatus(`A location named "${label}" already exists.`)
+          return
+        }
+        this.savingLocation = true
+        this.updateStatus('Getting location...')
+        try {
+          const pos = await getPosition(PRECISE_POSITION_OPTIONS)
+          this.savedLocations.push({
+            label,
+            coords: { lat: pos.coords.latitude, lon: pos.coords.longitude }
+          })
           this.saveToStore()
           this.label = ''
-          this.status = `Location "${this.savedLocations[this.savedLocations.length-1].label}" saved.`
-        }, () => {
-          this.status = 'Error: Could not get location to save it.'
-        })
+          this.updateStatus(`Location "${label}" saved.`)
+        } catch (e) {
+          console.error('Geolocation error:', e)
+          this.updateStatus('Error: Could not get location to save it.')
+        } finally {
+          this.savingLocation = false
+        }
       },
       removeLocation(idx) {
-        this.savedLocations.splice(idx, 1)
+        const [removed] = this.savedLocations.splice(idx, 1)
         this.saveToStore()
-        this.status = 'Location removed.'
+        this.updateStatus(removed ? `Location "${removed.label}" removed.` : 'Location removed.')
       },
       exportLocations() {
         const blob = new Blob([JSON.stringify(this.savedLocations, null, 2)], {type: 'application/json'})
@@ -391,8 +505,12 @@
         const a = document.createElement('a')
         a.href = url
         a.download = 'locations.json'
+        document.body.appendChild(a)
         a.click()
-        URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        // Revoking synchronously can cancel the download in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        this.updateStatus(`Exported ${this.savedLocations.length} locations.`)
       },
       triggerImport() {
         this.$refs.importFile.click()
@@ -401,84 +519,89 @@
         const file = e.target.files[0]
         if (!file) return
         const reader = new FileReader()
+        reader.onerror = () => {
+          this.updateStatus('Import failed: Could not read the file.')
+        }
         reader.onload = evt => {
+          let imported
           try {
-            const imported = JSON.parse(evt.target.result)
-            if (!Array.isArray(imported)) {
-              this.status = 'Import failed: Expected an array.'
-              return
-            }
-            // Validate each location has required structure
-            const validLocations = []
-            for (const loc of imported) {
-              if (typeof loc.label === 'string' && loc.label.trim() &&
-                  loc.coords && typeof loc.coords.lat === 'number' &&
-                  typeof loc.coords.lon === 'number') {
-                validLocations.push({
-                  label: loc.label.trim(),
-                  coords: { lat: loc.coords.lat, lon: loc.coords.lon }
-                })
-              }
-            }
-            if (validLocations.length === 0) {
-              this.status = 'Import failed: No valid locations found.'
-              return
-            }
-            this.savedLocations = validLocations
-            this.saveToStore()
-            const skipped = imported.length - validLocations.length
-            this.status = skipped > 0
-              ? `Imported ${validLocations.length} locations (${skipped} invalid entries skipped).`
-              : `Imported ${validLocations.length} locations!`
+            imported = JSON.parse(evt.target.result)
           } catch {
-            this.status = 'Import failed: Not valid JSON.'
+            this.updateStatus('Import failed: Not valid JSON.')
+            return
           }
+          if (!Array.isArray(imported)) {
+            this.updateStatus('Import failed: Expected an array.')
+            return
+          }
+          const validLocations = imported.map(normalizeLocation).filter(Boolean)
+          if (validLocations.length === 0) {
+            this.updateStatus('Import failed: No valid locations found.')
+            return
+          }
+          // Merge rather than replace - an import should never silently discard
+          // locations the user already had.
+          const byLabel = new Map(this.savedLocations.map(loc => [loc.label, loc]))
+          let added = 0
+          let updated = 0
+          for (const loc of validLocations) {
+            if (byLabel.has(loc.label)) updated++
+            else added++
+            byLabel.set(loc.label, loc)
+          }
+          this.savedLocations = [...byLabel.values()]
+          this.saveToStore()
+          const skipped = imported.length - validLocations.length
+          const parts = [`${added} added`, `${updated} updated`]
+          if (skipped > 0) parts.push(`${skipped} invalid skipped`)
+          this.updateStatus(`Import complete: ${parts.join(', ')}.`)
         }
         reader.readAsText(file)
         e.target.value = ''
       },
       async checkForUpdates() {
-        this.appUpdateStatus = 'Checking for updates...'
-
-        if (!('serviceWorker' in navigator)) {
-          this.appUpdateStatus = 'Service worker not supported.'
-          return
-        }
+        if (this.checkingUpdate) return
+        this.checkingUpdate = true
+        this.updateStatus('Checking for updates...')
 
         try {
-          const registration = await navigator.serviceWorker.getRegistration()
-
-          if (!registration) {
-            this.appUpdateStatus = 'No service worker registered.'
+          if (!('serviceWorker' in navigator)) {
+            this.updateStatus('Service workers are not supported in this browser.')
             return
           }
 
-          // Force check for update
+          const registration = await navigator.serviceWorker.getRegistration()
+          if (!registration) {
+            this.updateStatus('No service worker registered.')
+            return
+          }
+
           await registration.update()
 
-          // Check if there's a new service worker waiting
-          if (registration.waiting) {
-            this.appUpdateStatus = 'Update found! Reloading app...'
-            // Tell the waiting service worker to take over
-            registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-            // Reload the page to activate the new service worker
-            setTimeout(() => window.location.reload(), 500)
-          } else if (registration.installing) {
-            this.appUpdateStatus = 'Update installing...'
-            // Wait for it to finish installing
-            registration.installing.addEventListener('statechange', (e) => {
-              if (e.target.state === 'installed') {
-                this.appUpdateStatus = 'Update ready! Reloading app...'
-                setTimeout(() => window.location.reload(), 500)
-              }
-            })
-          } else {
-            this.appUpdateStatus = 'App is up to date!'
-            setTimeout(() => this.appUpdateStatus = '', 3000)
+          const pending = registration.waiting || registration.installing
+          if (!pending) {
+            this.updateStatus('App is up to date.')
+            setTimeout(() => {
+              if (this.status === 'App is up to date.') this.updateStatus(READY_STATUS)
+            }, 3000)
+            return
           }
+
+          this.updateStatus('Update found, installing...')
+          await whenInstalled(pending)
+          this.updateStatus('Update ready, reloading...')
+          // The controllerchange listener below reloads once it takes over.
+          armUpdateReload()
+          pending.postMessage({ type: 'SKIP_WAITING' })
+          setTimeout(() => {
+            if (this.status === 'Update ready, reloading...')
+              this.updateStatus('Update installed. Reload the page to use it.')
+          }, 5000)
         } catch (error) {
           console.error('Update check failed:', error)
-          this.appUpdateStatus = 'Update check failed. Please try again.'
+          this.updateStatus('Update check failed. Please try again.')
+        } finally {
+          this.checkingUpdate = false
         }
       }
     }
@@ -486,7 +609,23 @@
   app.mount('#app')
   </script>
   <script>
+  let updateRequested = false
+  function armUpdateReload() {
+    updateRequested = true
+  }
+
   if ('serviceWorker' in navigator) {
+    // Reload only when a worker replaces the one that was already controlling
+    // this page, or when the user asked for the update themselves. On a first
+    // visit claim() would otherwise trigger a pointless reload.
+    const hadController = !!navigator.serviceWorker.controller
+    let reloading = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController && !updateRequested) return
+      if (reloading) return
+      reloading = true
+      window.location.reload()
+    })
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js');
     });

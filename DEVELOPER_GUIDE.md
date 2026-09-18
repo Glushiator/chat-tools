@@ -19,14 +19,17 @@ Quick reference guide for developers contributing to or understanding this proje
 
 ## Quick Start
 
-**Zero build setup** - Just open `index.html` in a browser. All dependencies load via CDN.
+**Zero build setup** - but serve over HTTP, don't open the file directly:
+geolocation, clipboard and service workers all need a secure context, and
+`file://` is not one.
 
 ```bash
-# Clone and run
 git clone https://github.com/Glushiator/chat-tools.git
 cd chat-tools
-open index.html  # or python3 -m http.server 8000
+python3 -m http.server 8000   # then visit http://localhost:8000
 ```
+
+`http://localhost` counts as a secure context, so everything works there.
 
 **Tech Stack:**
 - Vue 3 (production build via CDN)
@@ -45,8 +48,10 @@ open index.html  # or python3 -m http.server 8000
 ┌─────────────────────────────────────────────────────┐
 │                    index.html                        │
 │  ┌──────────────────────────────────────────────┐  │
+│  │  Global status line (v-text)                 │  │
+│  ├──────────────────────────────────────────────┤  │
 │  │  Vue 3 App (tools-app component)             │  │
-│  │  - User Interface                            │  │
+│  │  Tabs: Copy | Locations | Settings           │  │
 │  │  - Event Handlers                            │  │
 │  │  - State Management (localStorage)           │  │
 │  └──────────────────────────────────────────────┘  │
@@ -55,11 +60,13 @@ open index.html  # or python3 -m http.server 8000
 │  ┌──────────────────────────────────────────────┐  │
 │  │  Utility Functions (index.js)                │  │
 │  │  - ClipboardWriter (Future-based Promise)    │  │
-│  │  - getPosition() → Geolocation              │  │
-│  │  - getAddress() → OSM Nominatim             │  │
-│  │  - getWeather() → Open-Meteo                │  │
-│  │  - currentTimestamp() → Formatted date      │  │
-│  │  - identifyPosition() → Match logic         │  │
+│  │  - getPosition(options)   → Geolocation      │  │
+│  │  - getAddress(lat,lon,r)  → OSM Nominatim    │  │
+│  │  - getWeather(pos)        → Open-Meteo       │  │
+│  │  - currentTimestamp()     → Formatted date   │  │
+│  │  - identifyPosition(...)  → Match logic      │  │
+│  │  - normalizeLocation()    → Validation       │  │
+│  │  - throttleNominatim()    → 1 req/s queue    │  │
 │  └──────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────┘
               │                          │
@@ -72,9 +79,9 @@ open index.html  # or python3 -m http.server 8000
 
 ┌─────────────────────────────────────────────────────┐
 │              service-worker.js                       │
-│  - Cache-first strategy for app files              │
-│  - Network-first for API calls                      │
-│  - Offline fallback support                         │
+│  - Cache-first, ignoreSearch: true                  │
+│  - Offline fallback to index.html on navigation     │
+│  - SKIP_WAITING / GET_VERSION message handlers      │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -82,44 +89,73 @@ open index.html  # or python3 -m http.server 8000
 
 ## Core Components
 
-### 1. **index.html**
+### 1. **index.html** (635 lines)
 Single-page Vue 3 application with inline template.
 
 **Component:** `tools-app`
-- **Template ID:** `#tools-app-template` (lines 26-67)
-- **Component Definition:** lines 77-181
+- **Template:** `#tools-app-template` (lines 201-275)
+- **Component definition:** lines 320-608
+- **Service worker registration + reload logic:** lines 611-633
 
-**Key Sections:**
-- Dark mode toggle (line 28-30)
-- Copy timestamp button (line 34)
-- Location management UI (lines 38-66)
-- Service worker registration (lines 185-189)
+**Key sections:**
+- Global status line (lines 202-204)
+- Copy tab, two buttons (lines 207-221)
+- Locations tab (lines 223-257)
+- Settings tab: dark mode, updates, version (lines 259-273)
 
-### 2. **index.js**
-Utility functions and core business logic (211 lines).
+**Helpers defined outside the component:**
+- `askServiceWorkerVersion()` (lines 287-302) - MessageChannel round trip
+- `whenInstalled(worker)` (lines 305-317) - resolves when a worker is promotable
+
+### 2. **index.js** (299 lines)
+Utility functions and core business logic.
 
 **Classes:**
 - `Future` (lines 1-29): Promise subclass with external resolve/reject
-- `ClipboardWriter` (lines 32-64): Async clipboard writing with cancellation
+- `ClipboardWriter` (lines 41-96): Async clipboard writing with cancellation and
+  a `writeText` fallback
 
 **Functions:**
-- `weatherCodeToString()` - Maps WMO codes to readable strings
-- `getAddress()` - Reverse geocoding with 200m cache
-- `calculateDistance()` - Haversine formula for geo-distance
-- `getPosition()` - Promise wrapper for Geolocation API
-- `getWeather()` - Fetch current weather with 1-hour cache
-- `currentTimestamp()` - Formatted timestamp string
-- `identifyPosition()` - Match current location to saved locations
+- `supportsDeferredClipboard()` (35) - feature detection for `ClipboardItem`
+- `weatherCodeToString()` (99) - maps WMO codes to readable strings
+- `formatCoords(lat, lon)` (150) - `(50.000000, 20.000000)`, 6 dp ≈ 0.1 m
+- `fetchWithTimeout(url, ms)` (156) - AbortController-backed fetch
+- `throttleNominatim(task)` (171) - serializes geocodes at 1 req/s
+- `getAddress(lat, lon, radius)` (183) - reverse geocoding, distance-cached
+- `calculateDistance()` (205) - Haversine formula for geo-distance
+- `getPosition(options)` (222) - Promise wrapper for Geolocation API
+- `getWeather(pos)` (237) - current weather, time+distance cached
+- `currentTimestamp()` (263) - formatted timestamp string
+- `identifyPosition(pos, saved, updateStatus, options)` (271) - label or address
+- `normalizeLocation(loc)` (290) - the one definition of a valid stored location
 
-### 3. **service-worker.js**
-PWA offline support (69 lines).
+**Tunable constants** (lines 137-141):
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `GEOCODE_CACHE_RADIUS` | 200 m | Reuse an address while within this distance |
+| `WALK_CACHE_RADIUS` | 10 m | Same, for walk mode |
+| `SAVED_LOCATION_RADIUS` | 100 m | Distance at which a saved label wins |
+| `WEATHER_CACHE_MAX_AGE` | 1 h | Weather TTL |
+| `WEATHER_CACHE_RADIUS` | 5 km | Distance that invalidates cached weather |
+
+Position options live at lines 218-219 (`POSITION_OPTIONS`,
+`PRECISE_POSITION_OPTIONS`).
+
+### 3. **service-worker.js** (90 lines)
+PWA offline support.
 
 **Strategy:**
-- **Precache:** All app files + CDN resources (lines 3-34)
-- **Runtime:** Cache-first for GET requests
-- **Fallback:** Show index.html when offline
+- **Precache:** All app files + CDN resources (lines 3-31, 28 entries)
+- **Runtime:** Cache-first for GET requests, `ignoreSearch: true`
+- **Fallback:** index.html on failed navigation; other failures rethrow
 
-**Cache name:** `geo-timestamp-cache-v1` (update version to bust cache)
+**Cache name:** `geo-timestamp-cache-<timestamp>`, rewritten automatically by
+the `pre-commit` hook. Do not edit it by hand.
+
+**Deliberately no `skipWaiting()` in `install`.** A new worker parks in
+`waiting` so the Settings tab can detect it. Promotion happens only when the
+page sends `SKIP_WAITING`.
 
 ### 4. **manifest.json**
 PWA configuration for "Add to Home Screen" functionality.
@@ -130,36 +166,60 @@ PWA configuration for "Add to Home Screen" functionality.
 
 ### Copy Timestamp Flow
 ```
-User clicks "Copy Timestamp & Location"
+User clicks a Copy button → copyInfo(walkMode)
     ↓
-copyInfo() method executes
+1. ClipboardWriter initialized (claims the clipboard inside the gesture)
+2. getPosition(walkMode ? PRECISE_POSITION_OPTIONS : POSITION_OPTIONS)
+     ↳ on failure: clipboardWriter.cancel(), status + toast, abort
+3. currentTimestamp()
+4. Promise.allSettled([identifyPosition(...), getWeather(pos)])
+     ↳ either may fail independently; the other still contributes
+5. walk mode only: append formatCoords(lat, lon)
     ↓
-1. ClipboardWriter initialized (starts async write)
-2. getPosition() → Get GPS coordinates
-3. identifyPosition() → Match or reverse geocode
-4. getWeather() → Fetch current conditions
-5. currentTimestamp() → Format datetime
+`[timestamp at location; weather]`
     ↓
-Combine all data: `[timestamp at location; weather]`
+clipboardWriter.writeText() → status + success toast
     ↓
-clipboardWriter.writeText() → Write to clipboard
-    ↓
-Show success toast with preview
+finally: busy = false   (a catch-all cancels the writer on any surprise)
+```
+
+`lookup` decides the mode (index.html:414-416):
+
+```javascript
+const lookup = walkMode
+  ? { radius: WALK_CACHE_RADIUS, useSavedLocations: false }
+  : { radius: GEOCODE_CACHE_RADIUS, useSavedLocations: true }
 ```
 
 ### Save Location Flow
 ```
-User enters label → Clicks "Save Current Location"
+User enters label → "Save Current Location"
     ↓
-saveLocation() method
+saveLocation()
     ↓
-Get current GPS position
+Reject empty label / duplicate label (case-insensitive)
     ↓
-Push to savedLocations array: {label, coords: {lat, lon}}
+getPosition(PRECISE_POSITION_OPTIONS)
     ↓
-localStorage.setItem('savedLocations', JSON.stringify(...))
+Push {label, coords:{lat, lon}} → saveToStore() → localStorage
     ↓
-Update UI table
+Table updates reactively; status reports the saved label
+```
+
+### Update Flow
+```
+Settings → "Check for Updates"
+    ↓
+registration.update()
+    ↓
+pending = registration.waiting || registration.installing
+    ↓  (none → "App is up to date.")
+whenInstalled(pending)
+    ↓
+armUpdateReload(); pending.postMessage({type:'SKIP_WAITING'})
+    ↓
+worker activates → claim() → 'controllerchange' → location.reload()
+    ↓  (5s with no takeover → "Reload the page to use it.")
 ```
 
 ---
@@ -169,7 +229,10 @@ Update UI table
 ### `ClipboardWriter` Class
 **Purpose:** Handle async clipboard writes with better control than `navigator.clipboard.writeText()`.
 
-**Why it exists:** Standard clipboard API is too simplistic. This allows preparing clipboard write, then populating it after async operations complete.
+**Why it exists:** Browsers require the clipboard write to start inside the user
+gesture, but the text is not known until GPS and two HTTP calls have completed.
+`ClipboardItem` accepts a `Promise<Blob>`, so the write is claimed immediately
+and fed later.
 
 ```javascript
 const writer = new ClipboardWriter()
@@ -177,49 +240,70 @@ const writer = new ClipboardWriter()
 await writer.writeText("final text")  // or writer.cancel()
 ```
 
-**Used in:** `index.html:109-130` (copyInfo method)
+**Fallback:** if `ClipboardItem` is missing (Firefox), `deferred` stays false and
+`writeText()` calls `navigator.clipboard.writeText()` directly. That happens
+after the awaits, so the browser may reject it - unavoidable without
+pre-computing everything.
+
+**`cancel()` is idempotent** - call it on any error path without checking state.
+
+**Used in:** `index.html:385-467` (copyInfo method)
 
 ---
 
-### `getAddress(lat, lon)`
-**Returns:** Promise<string> - Address or coordinates
+### `getAddress(lat, lon, radius = GEOCODE_CACHE_RADIUS)`
+**Returns:** Promise&lt;string&gt; - Address or `"(lat, lon)"`
 
 **Caching:**
-- Cache key: lat/lon within 200m radius
+- Reuses the cached address while within `radius` metres of where it was fetched
 - Stored in: `geocodeCache` object (module scope)
+- **Failures are never cached** - a dropped request must not pin coordinates in
+  place for the next 200 m
 
-**API:** `https://nominatim.openstreetmap.org/reverse`
+**Throttling:** every call goes through `throttleNominatim()`, which serializes
+requests at least 1s apart per Nominatim's usage policy.
 
-**Error handling:** Returns `"(lat, lon)"` on failure
+**API:** `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=0`
 
-**Usage note:** OSM Nominatim has rate limits. Cache prevents excessive requests.
+**Timeout:** 10s via `fetchWithTimeout()`
 
 ---
 
 ### `getWeather(pos)`
-**Returns:** Promise<string> - Weather description or "Weather unavailable"
+**Returns:** Promise&lt;string&gt; - Weather description or "Weather unavailable"
 
-**Caching:**
-- TTL: 1 hour (3600000ms)
-- Stored in: `weatherCache` object
+**Caching:** valid for 1 hour **and** within 5 km of where it was fetched. Both
+conditions must hold, so driving out of town refreshes it. Failures are not
+cached.
 
 **API:** `https://api.open-meteo.com/v1/forecast`
 
 **Format:** `"Weather: 22°C, Clear sky, wind 12 km/h"`
 
-**WMO Codes:** 99 weather conditions mapped (see `weatherCodeToString`)
+**WMO Codes:** 28 weather conditions mapped (see `weatherCodeToString`)
 
 ---
 
-### `identifyPosition(pos, savedLocations, updateStatus)`
-**Returns:** Promise<string> - `"at [Location Label]"` or `"at [Address]"`
+### `identifyPosition(pos, savedLocations, updateStatus, options)`
+**Returns:** Promise&lt;string&gt; - `"at [Location Label]"` or `"at [Address]"`
+
+**Options:** `{ radius = GEOCODE_CACHE_RADIUS, useSavedLocations = true }`
 
 **Logic:**
-1. Check all saved locations
-2. If any within 100m → return saved label
-3. Else → call `getAddress()` for reverse geocoding
+1. If `useSavedLocations`, check saved locations; any within
+   `SAVED_LOCATION_RADIUS` (100 m) wins and returns its label
+2. Otherwise call `getAddress()` with the given cache radius
 
-**Proximity threshold:** 100 meters (line 198)
+Walk mode passes `useSavedLocations: false` so it always produces a street
+address - the plain button is the one that honours saved labels.
+
+---
+
+### `getPosition(options = POSITION_OPTIONS)`
+**Returns:** Promise&lt;GeolocationPosition&gt;
+
+Rejects with a descriptive `Error` on failure, and on an unsupported browser.
+Always pass options: the API's default `timeout` is `Infinity`.
 
 ---
 
@@ -230,6 +314,15 @@ await writer.writeText("final text")  // or writer.cancel()
 - Accounts for Earth's curvature
 - Accurate for distances < 1000km
 - Earth radius: 6,371,000 meters
+
+---
+
+### `normalizeLocation(loc)`
+**Returns:** `{label, coords:{lat, lon}}` or `null`
+
+Rejects non-objects, blank labels, non-numeric or non-finite coordinates, and
+out-of-range latitude/longitude. Used by both `loadSaved()` and `handleImport()`
+so storage and imports enforce identical rules.
 
 ---
 
@@ -266,6 +359,10 @@ await writer.writeText("final text")  // or writer.cancel()
 "true" | "false"
 ```
 
+A corrupt `savedLocations` value is caught in `loadSaved()`, reported through the
+status line, and treated as empty. It is **not** overwritten, so the raw value
+stays recoverable from devtools until the user saves something.
+
 ### Vue Component State
 
 ```javascript
@@ -274,10 +371,18 @@ data() {
     label: '',              // Input for new location label
     savedLocations: [],     // Loaded from localStorage
     darkMode: false,        // Loaded from localStorage
-    status: 'Click...'      // Status message display
+    status: READY_STATUS,   // The single global status line
+    activeTab: 0,           // 0 Copy, 1 Locations, 2 Settings
+    cacheVersion: 'unknown',// Reported by the service worker
+    busy: false,            // A copy is in flight
+    savingLocation: false,  // A save is in flight
+    checkingUpdate: false,  // An update check is in flight
   }
 }
 ```
+
+All user feedback goes through `updateStatus()`. There is no second status
+property - everything shares the one line above the tabs.
 
 **Reactive updates:** Changes to `savedLocations` automatically update the table view (Buefy `<b-table>`).
 
@@ -288,10 +393,7 @@ data() {
 ### 1. OpenStreetMap Nominatim
 **Endpoint:** `https://nominatim.openstreetmap.org/reverse`
 
-**Params:**
-- `format=json`
-- `lat={latitude}`
-- `lon={longitude}`
+**Params:** `format=json`, `zoom=18`, `addressdetails=0`, `lat`, `lon`
 
 **Response:**
 ```json
@@ -301,7 +403,9 @@ data() {
 }
 ```
 
-**Rate Limit:** ~1 req/sec (usage policy). Our 200m cache helps compliance.
+**Rate Limit:** 1 req/sec (usage policy). Enforced by `throttleNominatim()`, and
+further reduced by the distance cache. Browsers cannot set `User-Agent`, so the
+throttle is the only compliance lever we have.
 
 **Terms:** Must not use for bulk geocoding. See: https://operations.osmfoundation.org/policies/nominatim/
 
@@ -344,28 +448,30 @@ data() {
 
 **Geocoding Cache:**
 ```javascript
-const geocodeCache = {
-  lat: null,
-  lon: null,
-  address: null
-}
+const geocodeCache = { lat: null, lon: null, address: null }
 ```
-- **Invalidation:** New position > 200m from cached position
-- **Reason for 200m:** Typical city block, prevents cache thrashing
+- **Invalidation:** new position further than the caller's `radius` from the
+  cached position (200 m normally, 10 m in walk mode)
+- **Reason for 200m:** typical city block, prevents cache thrashing
+- **Reason for 10m:** on foot, the street address genuinely changes that fast
 
 **Weather Cache:**
 ```javascript
-const weatherCache = {
-  time: 0,      // timestamp in ms
-  value: null   // weather string
-}
+const weatherCache = { time: 0, lat: null, lon: null, value: null }
 ```
 - **TTL:** 1 hour (weather doesn't change rapidly)
-- **Invalidation:** `Date.now() - weatherCache.time > 3600000`
+- **Distance:** 5 km - weather does not change block to block, but it does change
+  between towns, and a purely time-based cache reported the wrong town's weather
+
+### The Rule Both Caches Follow
+
+**Never cache a failure.** The error paths in `getAddress()` and `getWeather()`
+return a fallback string without touching the cache. Caching them meant one
+dropped request degraded every subsequent timestamp for an hour, or until the
+user moved 200 m.
 
 ### Potential Improvements
-- Store caches in localStorage for persistence
-- Add cache versioning
+- Store caches in localStorage for persistence across reloads
 - Implement LRU for multiple geocode results
 
 ---
@@ -376,24 +482,42 @@ const weatherCache = {
 
 **Install Phase:**
 ```javascript
-caches.open(CACHE_NAME)
-  .then(cache => cache.addAll(PRECACHE_ASSETS))
+caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_ASSETS))
 ```
-Downloads all 30+ assets (app files + CDN resources).
+Downloads 28 assets (app files + CDN mirrors). No `skipWaiting()` here on
+purpose - see below.
 
 **Activate Phase:**
-- Deletes old caches (cache version changed)
-- Takes control of all clients
+- Deletes old caches, **then** `clients.claim()` (both inside `waitUntil`, so
+  cleanup cannot race the claim)
 
 **Fetch Phase:**
 ```javascript
-// Cache-first strategy
-caches.match(request)
-  .then(cached => cached || fetch(request))
+caches.match(request, { ignoreSearch: true }).then(cached => cached || fetch(request))
 ```
+
+**`ignoreSearch` is load-bearing.** MDI's stylesheet requests
+`materialdesignicons-webfont.woff2?v=5.8.55`, while the precache list stores the
+file without a query string. `caches.match` compares query strings by default,
+so every icon font request missed the cache and fell through to the network -
+producing tofu rectangles whenever connectivity was poor. Do not remove it.
+
+### Why install does not call `skipWaiting()`
+
+With an unconditional `skipWaiting()`, a new worker activates the moment it
+installs and never appears in `registration.waiting`. "Check for Updates" then
+found nothing pending and reported "App is up to date" immediately after a new
+version had silently taken over. Now the worker waits, the button can see it,
+and promotion is explicit.
+
+The page reloads on `controllerchange`, guarded so it fires only when a worker
+replaces an existing controller **or** the user asked for the update
+(`armUpdateReload()`). Without that guard, the first-ever `claim()` would trigger
+a pointless reload on a first visit.
 
 ### What Works Offline
 ✅ App loads completely
+✅ Icons render (the cache actually serves the fonts now)
 ✅ Dark mode toggle
 ✅ View saved locations
 ✅ Location matching (if GPS available)
@@ -409,7 +533,7 @@ caches.match(request)
 2. Open DevTools → Application → Service Workers
 3. Check "Offline" checkbox
 4. Reload page
-5. App should still work (no network requests)
+5. App should still work, **with icons**, and no network requests
 
 ---
 
@@ -430,76 +554,74 @@ function weatherCodeToString(code) {
 
 ---
 
-### Change Proximity Threshold
-**File:** `index.js`
+### Change a Proximity or Cache Threshold
+**File:** `index.js` lines 137-141 - all five thresholds are named constants.
 
 ```javascript
-async function identifyPosition(pos, savedLocations, updateStatus) {
-  // ...
-  for (const loc of savedLocations) {
-    const d = calculateDistance(latitude, longitude, loc.coords.lat, loc.coords.lon)
-    if (d <= 100) {  // ← Change this value (meters)
-      locationString = `at ${loc.label}`
-      matchFound = true
-      break
-    }
-  }
-}
+const SAVED_LOCATION_RADIUS = 100  // ← distance at which a saved label wins
+const WALK_CACHE_RADIUS = 10       // ← walk mode geocode cache
 ```
+
+No magic numbers are left in the function bodies; change them here.
 
 ---
 
 ### Customize Output Format
-**File:** `index.html` (copyInfo method)
+**File:** `index.html` (copyInfo method, line 442)
 
 ```javascript
 // Current format:
-const finalStr = `[${timestamp} ${await locationString}; ${await weatherInfo}]`
+const finalStr = `[${timestamp} ${locationString}; ${weatherInfo}]`
 
 // Example alternatives:
-const finalStr = `${timestamp} - ${await locationString} (${await weatherInfo})`
-const finalStr = {
-  timestamp,
-  location: await locationString,
-  weather: await weatherInfo
-}  // For JSON output
+const finalStr = `${timestamp} - ${locationString} (${weatherInfo})`
+const finalStr = JSON.stringify({ timestamp, location: locationString, weather: weatherInfo })
 ```
 
 ---
 
 ### Add a New Saved Location Field
-**Files:** `index.html`, localStorage schema
+**Files:** `index.html`, `index.js`
 
-1. Update data structure:
+1. Extend `normalizeLocation()` in `index.js` so the field survives load/import
+2. Set it in `saveLocation()`:
 ```javascript
-// Add to saveLocation() method
 this.savedLocations.push({
-  label: this.label.trim(),
+  label,
   coords: { lat: pos.coords.latitude, lon: pos.coords.longitude },
-  notes: this.notes,  // New field
-  created: Date.now()  // New field
+  notes: this.notes,
 })
 ```
-
-2. Update table display:
+3. Add a column:
 ```html
 <b-table-column field="notes" label="Notes" v-slot="props">
   {{ props.row.notes }}
 </b-table-column>
 ```
 
-3. Add input field for notes in template
+**Do not skip step 1** - `loadSaved()` and `handleImport()` both rebuild entries
+through `normalizeLocation()`, so any field it does not copy is silently dropped.
 
 ---
 
 ### Update Cache Version (Force Refresh)
-**File:** `service-worker.js`
+**Handled for you.** `.git/hooks/pre-commit` rewrites `CACHE_NAME` to
+`geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)` whenever a commit has staged files,
+and re-stages `service-worker.js`:
 
-```javascript
-const CACHE_NAME = 'geo-timestamp-cache-v2';  // Increment version
+```bash
+NEW_VERSION="geo-timestamp-cache-$(date +%Y%m%d-%H%M%S)"
+perl -i -pe "s/^const CACHE_NAME = '[^']+';/const CACHE_NAME = '${NEW_VERSION}';/" "$SERVICE_WORKER"
+git add "$SERVICE_WORKER"
 ```
 
-**What happens:** On next visit, service worker activates and deletes old cache.
+**Caveat:** git hooks are not version-controlled. After a fresh clone the hook is
+absent and nothing busts the cache, so copy it across (or set `core.hooksPath` to
+a tracked directory) before committing.
+
+**What happens on the client:** the new worker installs and waits; the Settings
+tab's "Check for Updates" promotes it and reloads. Old caches are deleted during
+activation.
 
 ---
 
@@ -508,76 +630,96 @@ const CACHE_NAME = 'geo-timestamp-cache-v2';  // Increment version
 
 1. Add link/script tag to `index.html`
 2. Download resource to local mirror directory
-3. Add path to `PRECACHE_ASSETS` array in service worker
+3. Add path to `PRECACHE_ASSETS` array in service worker (without any query
+   string - `ignoreSearch: true` handles versioned URLs)
 
-**Example:**
-```javascript
-// service-worker.js
-const PRECACHE_ASSETS = [
-  // ... existing assets ...
-  './cdn.example.com/library.js'  // Add new resource
-];
-```
+`CACHE_NAME` takes care of itself via the pre-commit hook.
 
 ---
 
 ## Testing
 
+### Automated Checks
+
+There is no test framework, but `index.js` is a plain classic script with no DOM
+dependencies at load time, so it can be loaded into a Node `vm` context with a
+stubbed `fetch`. This is how the caching behaviour is verified:
+
+```javascript
+const fs = require('fs'), vm = require('vm');
+let calls = [], nextResponse = null;
+const ctx = {
+  console, setTimeout, clearTimeout, AbortController, Date, Math, Number, Promise, Blob,
+  fetch: async (url) => {
+    calls.push(url);
+    if (nextResponse instanceof Error) throw nextResponse;
+    return { json: async () => nextResponse };
+  },
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('index.js', 'utf8'), ctx);
+
+// Gotcha: top-level `const` does NOT become a property of the context object.
+// Function declarations do. Read constants from inside the context:
+const K = vm.runInContext('({WALK: WALK_CACHE_RADIUS, GEO: GEOCODE_CACHE_RADIUS})', ctx);
+
+nextResponse = new Error('offline');
+await ctx.getAddress(50, 20);                       // → "(50.000000, 20.000000)"
+nextResponse = { display_name: 'Real Street 1' };
+await ctx.getAddress(50, 20);                       // → retries; failure wasn't cached
+```
+
+Worth covering: cache hit/miss at each radius, failure paths not caching,
+weather invalidation by distance, `normalizeLocation()` rejections, walk mode
+ignoring saved locations, and the Nominatim throttle spacing calls ≥1s apart.
+
+Syntax-check the inline scripts too, since they never pass through a bundler:
+
+```bash
+node --check index.js && node --check service-worker.js
+node -e "const fs=require('fs'),vm=require('vm');
+[...fs.readFileSync('index.html','utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  .forEach((m,i)=>new vm.Script(m[1],{filename:'inline-'+i}));
+console.log('inline scripts parse OK')"
+```
+
 ### Manual Testing Checklist
 
 **Core Functionality:**
-- [ ] Copy timestamp creates correct format
-- [ ] Saved location matches within 100m
+- [ ] Plain copy creates correct format
+- [ ] Walk copy appends coordinates and ignores a nearby saved location
+- [ ] Saved location matches within 100m (plain button only)
 - [ ] Address lookup works (not near saved location)
 - [ ] Weather displays correctly
-- [ ] Dark mode toggles and persists
+- [ ] Dark mode toggles and persists (Settings tab)
+- [ ] Every action reports to the single status line
 
 **Location Management:**
-- [ ] Save location with label
+- [ ] Save location with label (Enter key works too)
+- [ ] Duplicate label is rejected
 - [ ] Delete location
 - [ ] Export to JSON
-- [ ] Import from JSON
+- [ ] Import merges rather than replaces
 - [ ] Import invalid JSON shows error
+- [ ] Import with some invalid entries reports the skipped count
 
 **Edge Cases:**
-- [ ] Geolocation denied (should show error)
-- [ ] Network offline (should show cached/unavailable)
-- [ ] Duplicate location labels (currently allowed)
-- [ ] Empty label (should be rejected)
+- [ ] Geolocation denied (error status + toast, clipboard write cancelled)
+- [ ] Geolocation hangs (times out after 10s / 15s rather than forever)
+- [ ] Network offline (coordinates + "Weather unavailable", nothing cached)
+- [ ] Corrupt `savedLocations` in localStorage (app still loads)
+- [ ] Empty label (rejected)
 
 **Cross-Browser:**
 - [ ] Chrome/Edge (Chromium)
-- [ ] Firefox
+- [ ] Firefox (exercises the `writeText` clipboard fallback)
 - [ ] Safari (especially iOS for clipboard API)
 
 **PWA:**
 - [ ] Install to home screen (mobile)
-- [ ] Works offline after first load
-- [ ] Updates when service worker changes
-
-### Automated Testing
-
-**Current state:** No automated tests
-
-**Recommended approach:**
-```javascript
-// Vitest + Vue Test Utils
-import { mount } from '@vue/test-utils'
-import { describe, it, expect } from 'vitest'
-
-describe('calculateDistance', () => {
-  it('calculates distance between two points', () => {
-    const d = calculateDistance(0, 0, 0, 1)
-    expect(d).toBeCloseTo(111000, -3)  // ~111km per degree
-  })
-})
-```
-
-**What to test:**
-- Pure functions (calculateDistance, weatherCodeToString, currentTimestamp)
-- ClipboardWriter state machine
-- Cache logic (mock Date.now)
-- Component methods (saveLocation, removeLocation)
+- [ ] Works offline after first load, **icons included**
+- [ ] "Check for Updates" finds a bumped `CACHE_NAME` and reloads
+- [ ] "Check for Updates" says "up to date" when nothing changed
 
 ---
 
@@ -585,17 +727,18 @@ describe('calculateDistance', () => {
 
 ```
 chat-tools/
-├── index.html              # Main app (192 lines)
+├── index.html              # Main app (635 lines)
 │   └── Vue 3 SPA with inline template
-├── index.js                # Utilities (211 lines)
+├── index.js                # Utilities (299 lines)
 │   ├── Future class
 │   ├── ClipboardWriter class
-│   └── 7 core functions
-├── service-worker.js       # PWA offline (69 lines)
-│   └── Cache-first strategy
+│   └── 11 core functions
+├── service-worker.js       # PWA offline (90 lines)
+│   └── Cache-first strategy, ignoreSearch
 ├── manifest.json           # PWA metadata (15 lines)
 ├── icon-256.png            # App icon
 ├── README.md               # User documentation
+├── CLAUDE.md               # Code analysis / architecture notes
 ├── DEVELOPER_GUIDE.md      # This file
 ├── LICENSE                 # Unlicense (public domain)
 ├── poc.html               # Buefy test file (can ignore)
@@ -608,7 +751,7 @@ chat-tools/
     └── Font Awesome 5
 ```
 
-**Total LOC:** ~500 lines of actual code (excluding CDN resources)
+**Total LOC:** ~1000 lines of actual code (excluding CDN resources)
 
 ---
 
@@ -617,7 +760,7 @@ chat-tools/
 ### Why No Build System?
 **Pros:**
 - Zero setup friction
-- Works everywhere (just open HTML)
+- Works everywhere (just serve the folder)
 - Easy to understand (no webpack configs)
 - Perfect for small projects
 
@@ -626,6 +769,7 @@ chat-tools/
 - No JSX/SFC
 - No tree-shaking
 - CDN dependencies (larger initial load)
+- Cache busting depends on a git hook that the repo cannot ship
 
 **When to migrate:** If project grows beyond ~1000 LOC or needs npm packages.
 
@@ -641,21 +785,31 @@ Standard Promises can't be resolved externally. ClipboardWriter needs to:
 
 ---
 
+### Why Two Copy Buttons?
+A single button cannot serve both uses. Standing still, a saved label and a
+200 m cache are exactly right: private, stable, few API calls. Walking, both are
+wrong - "at Home" erases the route, and a 200 m cache repeats an address that is
+already two blocks stale.
+
+Rather than infer intent from movement (unreliable, and it would need
+`watchPosition`), the mode is an explicit choice. Walk mode turns off saved
+locations entirely, drops the cache radius to 10 m, requests a high-accuracy fix
+with no cached position, and appends the coordinates.
+
+---
+
 ### Why Cache in Memory vs localStorage?
 **Current:** Caches stored in module-scope variables (cleared on page reload)
 
 **Tradeoff:**
 - ✅ Simpler code
 - ✅ No serialization overhead
-- ❌ Lost on page refresh
+- ❌ Lost on page refresh (noticeable mid-walk)
 - ❌ Not shared across tabs
 
 **To persist caches:**
 ```javascript
-// Write to localStorage
 localStorage.setItem('geocodeCache', JSON.stringify(geocodeCache))
-
-// Read on page load
 const geocodeCache = JSON.parse(localStorage.getItem('geocodeCache')) ||
   { lat: null, lon: null, address: null }
 ```
@@ -673,6 +827,10 @@ const geocodeCache = JSON.parse(localStorage.getItem('geocodeCache')) ||
 
 **Downside:** Buefy 1.x is in maintenance mode (Buefy 2 not released)
 
+**Vue 3 note:** the `.native` event modifier does not exist in Vue 3. Listeners
+such as `@keyup.enter` on `<b-input>` land on the component's root `<div>` via
+attribute fallthrough and work because the event bubbles from the inner input.
+
 ---
 
 ## Performance Considerations
@@ -683,15 +841,14 @@ const geocodeCache = JSON.parse(localStorage.getItem('geocodeCache')) ||
 - Buefy: 180KB
 - Font Awesome: 80KB
 - MDI: 70KB
-- App code: ~10KB
+- App code: ~15KB
 
 **After service worker:** 0 bytes (all cached)
 
 ### Optimization Opportunities
 1. **Lazy load icons:** Only include used glyphs
 2. **Preconnect to APIs:** `<link rel="preconnect" href="https://nominatim.openstreetmap.org">`
-3. **Compress cached resources:** Use gzip in service worker
-4. **Background sync:** Queue failed API calls for retry
+3. **Background sync:** Queue failed API calls for retry
 
 ---
 
@@ -702,21 +859,23 @@ const geocodeCache = JSON.parse(localStorage.getItem('geocodeCache')) ||
 ✅ **No user accounts** - No credential theft
 ✅ **HTTPS required** - Geolocation + Clipboard APIs need it
 ✅ **No eval()** - No code injection vectors
+✅ **Status line uses `v-text`** - labels and imported data cannot inject markup
+✅ **Import validation** - `normalizeLocation()` gates every stored entry
 ✅ **Public domain license** - No legal issues
 
 ### Potential Risks
 ⚠️ **Location privacy:** GPS coordinates stored in localStorage (readable by any script on same origin)
-⚠️ **XSS via import:** Malicious JSON could inject HTML (mitigated: JSON.parse validates)
-⚠️ **API abuse:** User could spam OSM/Open-Meteo (mitigated: caching)
+⚠️ **API abuse:** mitigated by the 1 req/s throttle and the distance caches
 
 ### Hardening Recommendations
 ```html
 <!-- Add CSP header -->
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self';
-               script-src 'self' 'unsafe-inline' cdn.jsdelivr.net unpkg.com;
+               script-src 'self' 'unsafe-inline';
                connect-src 'self' nominatim.openstreetmap.org api.open-meteo.com">
 ```
+(All CDN resources are mirrored locally, so `'self'` is sufficient for scripts.)
 
 ---
 
@@ -731,21 +890,21 @@ self.addEventListener('fetch', (event) => {
 })
 ```
 
-### View All Console Logs
+### Check What the Cache Actually Holds
 ```javascript
-// index.html - Already present at line 112
-console.log("current position:", pos)
+// Browser console - the icon-rectangle class of bug lives here
+const c = await caches.open((await caches.keys())[0])
+const reqs = await c.keys()
+reqs.map(r => r.url).filter(u => u.includes('webfont'))
 ```
 
 ### Inspect localStorage
 ```javascript
-// Browser console
 JSON.parse(localStorage.getItem('savedLocations'))
 ```
 
 ### Clear All Data
 ```javascript
-// Browser console
 localStorage.clear()
 caches.keys().then(keys => keys.forEach(key => caches.delete(key)))
 navigator.serviceWorker.getRegistrations().then(regs =>
@@ -759,6 +918,10 @@ navigator.serviceWorker.getRegistrations().then(regs =>
 navigator.geolocation.getCurrentPosition = (success, error) => {
   error({ code: 1, message: 'User denied' })
 }
+
+// Simulate a dead network for the APIs only
+const realFetch = window.fetch
+window.fetch = (u, o) => /nominatim|open-meteo/.test(u) ? Promise.reject(new Error('offline')) : realFetch(u, o)
 ```
 
 ---
@@ -769,37 +932,55 @@ navigator.geolocation.getCurrentPosition = (success, error) => {
 2. **Create feature branch:** `git checkout -b feature/your-feature`
 3. **Make changes** (test in multiple browsers)
 4. **Test offline mode** (service worker + airplane mode)
-5. **Update docs** (this file + README if user-facing)
-6. **Commit:** Clear message explaining "why" not just "what"
-7. **Push and create PR**
+5. **Confirm the pre-commit hook is installed** - without it `CACHE_NAME` never
+   changes and clients keep the old assets
+6. **Update docs** (this file + CLAUDE.md + README if user-facing)
+7. **Commit:** Clear message explaining "why" not just "what"
+8. **Push and create PR**
 
 **Code style:**
 - 2-space indentation
 - No semicolons (current style)
 - Async/await over .then() chains
 - Descriptive variable names
+- Thresholds as named constants, not literals in function bodies
 
 ---
 
 ## Troubleshooting
 
+### "Icons show as rectangles"
+**Cause:** the font file was requested with a query string the precache key
+lacked, so `caches.match` missed and the request hit the network.
+**Fix:** already handled by `ignoreSearch: true` in the fetch handler. If it
+recurs after adding a font, confirm the precache entry has **no** query string.
+
 ### "Clipboard write failed"
-**Cause:** Must be triggered by user gesture (click)
-**Fix:** Ensure copyInfo() only called from button click
+**Cause:** must be triggered by a user gesture; on Firefox the fallback
+`writeText()` runs after the awaits and may be refused.
+**Fix:** ensure `copyInfo()` is only called from a button click.
 
 ### "Service worker not updating"
-**Cause:** Browser caching old service worker
-**Fix:**
-1. DevTools → Application → Service Workers → "Update on reload"
-2. Or increment `CACHE_NAME` version
+**Cause:** `CACHE_NAME` unchanged, so the worker byte-compares identical -
+usually because the pre-commit hook is missing after a fresh clone.
+**Fix:** install the hook and re-commit, or DevTools → Application →
+Service Workers → "Update on reload".
+
+### "Check for Updates says 'up to date' but I deployed"
+**Cause:** the deployed `service-worker.js` is byte-identical. Check that the
+pre-commit hook actually ran (`git show HEAD:service-worker.js | head -1`) and
+that the server is not serving a stale worker script.
 
 ### "Address shows as (lat, lon)"
-**Cause:** OSM Nominatim request failed or offline
-**Fix:** Check network tab, verify not rate-limited
+**Cause:** Nominatim request failed, timed out, or the app is offline.
+**Fix:** check the network tab. Note the failure is not cached, so simply
+pressing the button again retries.
 
 ### "Location not matching saved location"
-**Cause:** GPS accuracy > 100m
-**Fix:** Increase threshold in identifyPosition(), or save location while at exact spot
+**Cause:** GPS accuracy > 100m, or you used the walk button (which ignores saved
+locations by design).
+**Fix:** use the plain button, raise `SAVED_LOCATION_RADIUS`, or re-save the
+location while standing at the exact spot.
 
 ### "Dark mode not persisting"
 **Cause:** localStorage blocked (private browsing)
@@ -820,30 +1001,37 @@ navigator.geolocation.getCurrentPosition = (success, error) => {
 ## Quick Reference Card
 
 ```javascript
-// Get current position
-const pos = await getPosition(updateStatusCallback)
+// Get current position (always pass options; the API default never times out)
+const pos = await getPosition(POSITION_OPTIONS)          // or PRECISE_POSITION_OPTIONS
 
-// Reverse geocode
-const address = await getAddress(lat, lon)
+// Reverse geocode, with an explicit cache radius
+const address = await getAddress(lat, lon, WALK_CACHE_RADIUS)
 
-// Get weather
+// Get weather (cached 1h AND within 5km)
 const weather = await getWeather(pos)
 
-// Format timestamp
+// Format timestamp / coordinates
 const timestamp = currentTimestamp()
+const coords = formatCoords(lat, lon)
 
 // Calculate distance
 const meters = calculateDistance(lat1, lon1, lat2, lon2)
 
-// Match location or geocode
-const locationStr = await identifyPosition(pos, savedLocations, updateStatus)
+// Match a saved label, or geocode
+const locationStr = await identifyPosition(pos, savedLocations, updateStatus, {
+  radius: GEOCODE_CACHE_RADIUS,
+  useSavedLocations: true,     // false = walk mode
+})
 
-// Write to clipboard (must be in user gesture)
+// Validate a stored/imported location
+const clean = normalizeLocation(raw)   // null if invalid
+
+// Write to clipboard (construct inside the user gesture)
 const writer = new ClipboardWriter()
-await writer.writeText("text to copy")
+await writer.writeText("text to copy")   // or writer.cancel()
 ```
 
 ---
 
-**Last Updated:** 2025-12-27
-**Contributors:** Glushiator, Claude Sonnet 4.5
+**Last Updated:** 2026-09-18
+**Contributors:** Glushiator, Claude Sonnet 4.5, Claude Opus 5
